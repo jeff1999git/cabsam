@@ -1,0 +1,4 @@
+@import "@excelcabs/ui/globals.css";
+
+/* Scan the app source for class names (explicit, independent of the working directory). */
+@source "../**/*.{ts,tsx}";

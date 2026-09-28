@@ -1,0 +1,119 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Scan the shared UI package source for class names. The app adds its own @source. */
+@source "../**/*.{ts,tsx}";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-soft-strong: var(--primary-soft-strong);
+  --color-field: var(--field);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-soft: var(--destructive-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.03), 0 2px 8px -2px rgb(15 23 42 / 0.06);
+  --shadow-elevated: 0 8px 24px -6px rgb(15 23 42 / 0.12), 0 2px 6px -2px rgb(15 23 42 / 0.06);
+}
+
+/*
+ * Excel Cabs design tokens (light theme).
+ * The brand is expressed through a single primary colour — change --primary / --primary-soft /
+ * --ring to rebrand.
+ */
+:root {
+  --radius: 0.75rem;
+
+  --background: #f6f7fb; /* cool off-white */
+  --foreground: #0f172a; /* slate-900 */
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+
+  /* Brand: Excel Cabs navy. Rebrand by changing the primary family below. */
+  --primary: #0f2b8c;
+  --primary-foreground: #ffffff;
+  --primary-soft: #e4eafb; /* tinted secondary buttons, selected rows, info pills */
+  --primary-soft-strong: #d3ddf8; /* hover state of soft surfaces */
+
+  /* Filled form controls (no visible border until focus). */
+  --field: #eef1f7;
+
+  --secondary: #eef1f7;
+  --secondary-foreground: #1e293b;
+  --muted: #f1f4f9;
+  --muted-foreground: #5b6477; /* AA on white and on --background */
+  --accent: #eef2fc;
+  --accent-foreground: #0f2b8c;
+
+  --destructive: #dc2626; /* red-600 */
+  --destructive-foreground: #ffffff;
+  --destructive-soft: #fee2e2; /* red-100 */
+  --success: #166534; /* green-800 — text/icons on soft green */
+  --success-soft: #a7f0c1; /* vivid mint pill */
+  --warning: #92400e; /* amber-800 */
+  --warning-soft: #fde9b8;
+  --info: #0f2b8c;
+  --info-soft: #e4eafb;
+
+  --border: #e3e7ef;
+  --input: #d5dbe6;
+  --ring: #0f2b8c;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+  /* Prevent iOS zoom-on-focus: form controls are at least 16px on small screens. */
+  @media (max-width: 767px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px;
+    }
+  }
+}

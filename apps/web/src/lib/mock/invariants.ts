@@ -1,0 +1,142 @@
+import type { Trip } from "@excelcabs/types";
+
+import { TURNAROUND_MINUTES } from "@/config/business";
+import { toMinutes } from "@/lib/datetime";
+
+import { BOOKING_ID_RE, bookingIdPrefix } from "./bookings";
+import type { MockDb } from "./db";
+
+const MINUTES_PER_DAY = 1_440;
+
+function duplicates(values: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const repeated = new Set<string>();
+  for (const value of values) {
+    if (seen.has(value)) repeated.add(value);
+    seen.add(value);
+  }
+  return [...repeated];
+}
+
+function groupBy<T>(items: readonly T[], key: (item: T) => string): Map<string, T[]> {
+  const groups = new Map<string, T[]>();
+  for (const item of items) {
+    const group = groups.get(key(item));
+    if (group) group.push(item);
+    else groups.set(key(item), [item]);
+  }
+  return groups;
+}
+
+function overlaps(a: Trip, b: Trip): boolean {
+  const start = (trip: Trip) => toMinutes(trip.departureTime);
+  const end = (trip: Trip) => start(trip) + trip.durationMinutes + TURNAROUND_MINUTES;
+  return start(a) < end(b) && start(b) < end(a);
+}
+
+/** Every broken invariant, as a readable message (empty when the data is consistent). */
+function findDbViolations(db: Readonly<MockDb>): string[] {
+  const violations: string[] = [];
+  const users = new Map(db.users.map((user) => [user.id, user]));
+  const routes = new Map(db.routes.map((route) => [route.id, route]));
+  const buses = new Map(db.buses.map((bus) => [bus.id, bus]));
+  const trips = new Map(db.trips.map((trip) => [trip.id, trip]));
+  const holidayDates = new Set(db.holidays.map((holiday) => holiday.date));
+  const credentialUsers = new Set(db.credentials.map((credential) => credential.userId));
+
+  const collections = { users: db.users, routes: db.routes, buses: db.buses, trips: db.trips, bookings: db.bookings, holidays: db.holidays };
+  for (const [name, items] of Object.entries(collections)) {
+    for (const id of duplicates(items.map((item) => item.id))) violations.push(`${name}: duplicate id ${id}`);
+  }
+  for (const email of duplicates(db.users.map((user) => user.email.toLowerCase()))) {
+    violations.push(`users: duplicate email ${email}`);
+  }
+  for (const date of duplicates(db.holidays.map((holiday) => holiday.date))) {
+    violations.push(`holidays: duplicate date ${date}`);
+  }
+  for (const user of db.users) {
+    if (!credentialUsers.has(user.id)) violations.push(`users: ${user.id} has no credential`);
+  }
+
+  for (const trip of db.trips) {
+    const route = routes.get(trip.routeId);
+    const bus = buses.get(trip.busId);
+    const driver = users.get(trip.driverId);
+    if (!route) violations.push(`trip ${trip.id}: unknown route ${trip.routeId}`);
+    if (!bus) violations.push(`trip ${trip.id}: unknown bus ${trip.busId}`);
+    if (driver?.role !== "driver") violations.push(`trip ${trip.id}: ${trip.driverId} is not a driver`);
+    if (toMinutes(trip.departureTime) + trip.durationMinutes > MINUTES_PER_DAY) {
+      violations.push(`trip ${trip.id}: ends after midnight`);
+    }
+    const isUpcoming = (trip.status === "scheduled" || trip.status === "in_progress") && trip.date >= db.seededOn;
+    if (isUpcoming && holidayDates.has(trip.date)) violations.push(`trip ${trip.id}: runs on a holiday`);
+    if (isUpcoming && (route?.status !== "active" || bus?.status !== "active" || driver?.status !== "active")) {
+      violations.push(`trip ${trip.id}: uses an inactive route, bus or driver`);
+    }
+  }
+
+  const running = db.trips.filter((trip) => trip.status !== "cancelled");
+  for (const [date, sameDay] of groupBy(running, (trip) => trip.date)) {
+    for (const [index, a] of sameDay.entries()) {
+      for (const b of sameDay.slice(index + 1)) {
+        if (!overlaps(a, b)) continue;
+        if (a.busId === b.busId) violations.push(`${date}: bus ${a.busId} double-booked (${a.id}, ${b.id})`);
+        if (a.driverId === b.driverId) violations.push(`${date}: driver ${a.driverId} double-booked (${a.id}, ${b.id})`);
+      }
+    }
+  }
+
+  for (const booking of db.bookings) {
+    const trip = trips.get(booking.tripId);
+    if (!trip) {
+      violations.push(`booking ${booking.id}: unknown trip ${booking.tripId}`);
+      continue;
+    }
+    if (users.get(booking.customerId)?.role !== "customer") {
+      violations.push(`booking ${booking.id}: ${booking.customerId} is not a customer`);
+    }
+    if (!BOOKING_ID_RE.test(booking.id) || !booking.id.startsWith(bookingIdPrefix(trip.date))) {
+      violations.push(`booking ${booking.id}: id does not match trip date ${trip.date}`);
+    }
+    const consistent =
+      booking.status === "cancelled" ||
+      (booking.status === "confirmed" && (trip.status === "scheduled" || trip.status === "in_progress")) ||
+      (booking.status === "completed" && trip.status === "completed");
+    if (!consistent) violations.push(`booking ${booking.id}: ${booking.status} on a ${trip.status} trip`);
+  }
+
+  const parsedIds = db.bookings.flatMap((booking) => {
+    const match = BOOKING_ID_RE.exec(booking.id);
+    return match?.[1] ? [{ ddmmyy: match[1], sequence: Number(match[2]) }] : [];
+  });
+  for (const [ddmmyy, ids] of groupBy(parsedIds, (id) => id.ddmmyy)) {
+    const sequences = ids.map((id) => id.sequence).toSorted((a, b) => a - b);
+    if (sequences.some((sequence, index) => sequence !== index + 1)) {
+      violations.push(`bookings EXC-${ddmmyy}-…: sequence is not 1..${sequences.length}`);
+    }
+  }
+
+  const seated = db.bookings.filter((booking) => booking.status !== "cancelled");
+  for (const [tripId, tripBookings] of groupBy(seated, (booking) => booking.tripId)) {
+    const trip = trips.get(tripId);
+    const capacity = trip ? buses.get(trip.busId)?.capacity : undefined;
+    if (capacity !== undefined && tripBookings.length > capacity) {
+      violations.push(`trip ${tripId}: ${tripBookings.length} bookings exceed capacity ${capacity}`);
+    }
+    for (const mobile of duplicates(tripBookings.map((booking) => booking.passengerMobile))) {
+      violations.push(`trip ${tripId}: passenger ${mobile} booked twice`);
+    }
+  }
+
+  return violations;
+}
+
+/** Throws when the data breaks an invariant. Run after seeding in development and in tests. */
+export function assertDbInvariants(db: Readonly<MockDb>): void {
+  const violations = findDbViolations(db);
+  if (violations.length > 0) {
+    throw new Error(
+      `[mock] ${violations.length} data invariant violation(s):\n${violations.slice(0, 20).join("\n")}`,
+    );
+  }
+}

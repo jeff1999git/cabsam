@@ -1,0 +1,30 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "ui": "stream",
+  "agentGuidance": false,
+  "tasks": {
+    "transit": {
+      "dependsOn": ["^transit"]
+    },
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", ".env*", "!e2e/**", "!playwright.config.ts"],
+      "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**"]
+    },
+    "lint": {
+      "dependsOn": ["transit"]
+    },
+    "typecheck": {
+      "dependsOn": ["transit"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "test:e2e": {
+      "dependsOn": ["build"],
+      "cache": false,
+      "passThroughEnv": ["PLAYWRIGHT_*", "CI", "E2E_PORT"]
+    }
+  }
+}

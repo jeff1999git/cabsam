@@ -1,0 +1,13 @@
+import { useEffect, useState } from "react";
+
+/** `value`, updated only after it has stopped changing for `delayMs` (e.g. search-as-you-type). */
+export function useDebouncedValue<T>(value: T, delayMs = 300): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => setDebouncedValue(value), delayMs);
+    return () => clearTimeout(timeoutId);
+  }, [value, delayMs]);
+
+  return debouncedValue;
+}

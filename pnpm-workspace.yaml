@@ -1,0 +1,49 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+catalog:
+  next: 16.3.6
+  eslint-config-next: 16.3.6
+  react: 19.3.0
+  react-dom: 19.3.0
+  "@types/react": 19.3.0
+  "@types/react-dom": 19.3.0
+  "@types/node": ^24.0.0
+  typescript: 5.9.3
+  eslint: ^9.39.5
+  "@eslint/js": ^9.39.5
+  typescript-eslint: ^8.70.1
+  eslint-plugin-react-hooks: ^7.1.1
+  globals: ^16.5.0
+  tailwindcss: 4.3.3
+  "@tailwindcss/postcss": 4.3.3
+  tw-animate-css: ^1.4.0
+  radix-ui: ^1.6.7
+  class-variance-authority: ^0.7.1
+  clsx: ^2.1.1
+  tailwind-merge: ^3.7.0
+  lucide-react: ^1.48.0
+  sonner: ^2.0.8
+  geist: ^1.7.2
+  react-hook-form: ^7.89.0
+  "@hookform/resolvers": ^5.9.1
+  zod: ^4.6.5
+  "@tanstack/react-query": ^5.104.0
+  client-only: ^0.0.1
+  turbo: 2.11.5
+  "@playwright/test": 1.63.0
+
+allowBuilds:
+  # Only dependency in the tree with an install script; its native binding arrives via
+  # optionalDependencies, so the postinstall fallback is not needed.
+  unrs-resolver: false
+
+minimumReleaseAgeExclude:
+  - '@turbo/darwin-64@2.11.5'
+  - '@turbo/darwin-arm64@2.11.5'
+  - '@turbo/linux-64@2.11.5'
+  - '@turbo/linux-arm64@2.11.5'
+  - '@turbo/windows-64@2.11.5'
+  - '@turbo/windows-arm64@2.11.5'
+  - turbo@2.11.5

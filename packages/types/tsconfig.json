@@ -1,0 +1,4 @@
+{
+  "extends": "@excelcabs/config/tsconfig/base.json",
+  "include": ["src"]
+}
