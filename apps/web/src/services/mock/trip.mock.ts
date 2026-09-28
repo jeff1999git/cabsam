@@ -5,10 +5,11 @@ import {
   type Bus,
   type FieldErrors,
   type ISODate,
-  type Route,
+  type RouteEndpoints,
   type ServiceErrorReason,
   type TimeHM,
   type Trip,
+  TRIP_DIRECTIONS,
   TRIP_EDITABLE_FIELDS,
   type TripSummary,
 } from "@excelcabs/types";
@@ -30,7 +31,9 @@ import {
   findScheduleConflicts,
   holidayOn,
   invalidTransition,
+  isSameRoute,
   lockedFieldsChanged,
+  routeEndpoints,
   type TripSlot,
   tripStartBlocker,
 } from "./_rules";
@@ -50,6 +53,10 @@ function byDeparture(a: Trip, b: Trip): number {
   return a.date.localeCompare(b.date) || a.departureTime.localeCompare(b.departureTime);
 }
 
+function byStops(a: RouteEndpoints, b: RouteEndpoints): number {
+  return a.origin.localeCompare(b.origin) || a.destination.localeCompare(b.destination);
+}
+
 function findTrip(db: Readonly<MockDb>, id: string): Trip {
   const trip = db.trips.find((candidate) => candidate.id === id);
   if (!trip) throw notFound("Trip");
@@ -65,13 +72,6 @@ function findOwnTrip(db: Readonly<MockDb>, id: string, driverId: string): Trip {
 
 function fieldError(field: string, message: string, reason: ServiceErrorReason) {
   return validation({ [field]: message }, message, reason);
-}
-
-function activeRoute(db: Readonly<MockDb>, id: string): Route {
-  const route = db.routes.find((candidate) => candidate.id === id);
-  if (route?.status === "active") return route;
-  const message = route ? `${formatRoute(route)} is inactive` : "Select a route";
-  throw fieldError("routeId", message, "RESOURCE_INACTIVE");
 }
 
 function activeBus(db: Readonly<MockDb>, id: string): Bus {
@@ -136,6 +136,21 @@ function assertNoScheduleConflict(db: Readonly<MockDb>, slot: TripSlot, excludeT
 }
 
 export const mockTripService: TripService = {
+  listRoutes() {
+    return mockRead((db) => {
+      const served = new Map<string, RouteEndpoints>();
+      for (const bus of db.buses) {
+        if (bus.status !== "active") continue;
+        for (const direction of TRIP_DIRECTIONS) {
+          const route = routeEndpoints(bus, direction);
+          const key = `${route.origin.toLowerCase()}→${route.destination.toLowerCase()}`;
+          if (!served.has(key)) served.set(key, route);
+        }
+      }
+      return [...served.values()].toSorted(byStops);
+    });
+  },
+
   search(query) {
     return mockRead((db) => {
       const { date, from, to } = parseInput(tripSearchInputSchema, query);
@@ -149,8 +164,8 @@ export const mockTripService: TripService = {
       const trips = db.trips
         .filter((trip) => trip.date === date && trip.status !== "cancelled")
         .filter((trip) => {
-          const route = index.routes.get(trip.routeId);
-          return route && isSameStop(route.origin, from) && isSameStop(route.destination, to);
+          const bus = index.buses.get(trip.busId);
+          return bus !== undefined && isSameRoute(routeEndpoints(bus, trip.direction), { origin: from, destination: to });
         })
         .toSorted(byDeparture)
         .map((trip) => toTripSearchItem(index, trip, now));
@@ -171,7 +186,6 @@ export const mockTripService: TripService = {
           (trip) =>
             (!query.dateFrom || trip.date >= query.dateFrom) &&
             (!query.dateTo || trip.date <= query.dateTo) &&
-            (!query.routeId || trip.routeId === query.routeId) &&
             (!query.busId || trip.busId === query.busId) &&
             (!query.driverId || trip.driverId === query.driverId) &&
             (!query.status || trip.status === query.status),
@@ -216,17 +230,16 @@ export const mockTripService: TripService = {
       const now = nowIst();
       assertNotPast(values.date, values.departureTime, now);
       assertNotHoliday(draft, values.date);
-      const route = activeRoute(draft, values.routeId);
-      activeBus(draft, values.busId);
+      const bus = activeBus(draft, values.busId);
       assertActiveDriver(draft, values.driverId);
-      assertEndsSameDay(values.departureTime, route.durationMinutes);
-      assertNoScheduleConflict(draft, { ...values, durationMinutes: route.durationMinutes });
+      assertEndsSameDay(values.departureTime, bus.durationMinutes);
+      assertNoScheduleConflict(draft, { ...values, durationMinutes: bus.durationMinutes });
 
       const at = nowIso();
       const trip: Trip = {
         id: newId("trp"),
         ...values,
-        durationMinutes: route.durationMinutes,
+        durationMinutes: bus.durationMinutes,
         status: "scheduled",
         startedAt: null,
         completedAt: null,
@@ -260,7 +273,7 @@ export const mockTripService: TripService = {
       if (locked.length > 0) {
         throw conflict(
           "TRIP_LOCKED_FIELDS",
-          `This trip has ${pluralize(bookedSeats, "booking")}, so its date and route can't change. Cancel it and create a new trip instead.`,
+          `This trip has ${pluralize(bookedSeats, "booking")}, so its date and direction can't change. Cancel it and create a new trip instead.`,
           { fieldErrors: Object.fromEntries(locked.map((field) => [field, "Locked — this trip has bookings"])) },
         );
       }
@@ -269,13 +282,18 @@ export const mockTripService: TripService = {
       const has = (field: (typeof changed)[number]) => changed.includes(field);
       if (has("date") || has("departureTime")) assertNotPast(next.date, next.departureTime, now);
       if (has("date")) assertNotHoliday(draft, next.date);
-      if (has("routeId")) next.durationMinutes = activeRoute(draft, next.routeId).durationMinutes;
       if (has("busId")) {
         const bus = activeBus(draft, next.busId);
+        const route = toTripSummary(indexDb(draft), trip).route;
+        if (bookedSeats > 0 && !isSameRoute(route, routeEndpoints(bus, next.direction))) {
+          const message = `${bus.name} serves ${bus.origin} ⇄ ${bus.destination}, but this trip has ${pluralize(bookedSeats, "booking")} for ${formatRoute(route)}`;
+          throw conflict("TRIP_BUS_ROUTE_MISMATCH", message, { fieldErrors: { busId: message } });
+        }
         if (bus.capacity < bookedSeats) {
           const message = `${bus.name} has ${bus.capacity} seats but this trip has ${pluralize(bookedSeats, "booking")}`;
           throw conflict("CAPACITY_BELOW_BOOKINGS", message, { fieldErrors: { busId: message } });
         }
+        next.durationMinutes = bus.durationMinutes;
       }
       if (has("driverId")) assertActiveDriver(draft, next.driverId);
       assertEndsSameDay(next.departureTime, next.durationMinutes);

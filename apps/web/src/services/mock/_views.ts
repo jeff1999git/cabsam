@@ -10,8 +10,6 @@ import type {
   DriverWithUsage,
   Holiday,
   ISODate,
-  Route,
-  RouteWithUsage,
   SessionUser,
   Trip,
   TripDetails,
@@ -27,6 +25,7 @@ import type { MockDb } from "@/lib/mock/db";
 import {
   bookedSeatsByTrip,
   bookingCancelBlocker,
+  routeEndpoints,
   tripBookability,
   tripPermissions,
   upcomingTrips,
@@ -35,7 +34,6 @@ import {
 /** Lookup maps built once per service call. Rebuild after mutating a draft. */
 export interface DbIndex {
   db: Readonly<MockDb>;
-  routes: ReadonlyMap<string, Route>;
   buses: ReadonlyMap<string, Bus>;
   users: ReadonlyMap<string, User>;
   trips: ReadonlyMap<string, Trip>;
@@ -47,7 +45,6 @@ export interface DbIndex {
 export function indexDb(db: Readonly<MockDb>): DbIndex {
   return {
     db,
-    routes: new Map(db.routes.map((route) => [route.id, route])),
     buses: new Map(db.buses.map((bus) => [bus.id, bus])),
     users: new Map(db.users.map((user) => [user.id, user])),
     trips: new Map(db.trips.map((trip) => [trip.id, trip])),
@@ -66,7 +63,6 @@ export function toSessionUser({ id, role, name, email, mobile }: User): SessionU
 }
 
 export function toTripSummary(index: DbIndex, trip: Trip): TripSummary {
-  const route = must(index.routes.get(trip.routeId), `route ${trip.routeId}`);
   const bus = must(index.buses.get(trip.busId), `bus ${trip.busId}`);
   const driver = must(index.users.get(trip.driverId), `driver ${trip.driverId}`);
   const bookedSeats = index.bookedSeats.get(trip.id) ?? 0;
@@ -77,7 +73,8 @@ export function toTripSummary(index: DbIndex, trip: Trip): TripSummary {
     arrivalTime: addMinutes(trip.departureTime, trip.durationMinutes).time,
     durationMinutes: trip.durationMinutes,
     status: trip.status,
-    route: { id: route.id, origin: route.origin, destination: route.destination },
+    route: routeEndpoints(bus, trip.direction),
+    direction: trip.direction,
     bus: { id: bus.id, name: bus.name, registrationNumber: bus.registrationNumber, capacity: bus.capacity },
     driver: { id: driver.id, name: driver.name, mobile: driver.mobile },
     capacity: bus.capacity,
@@ -151,7 +148,7 @@ export function toBookingDetails(
   };
 }
 
-/** Upcoming-trip usage of buses, drivers and routes, computed once per call. */
+/** Trip usage of buses and drivers, computed once per call. */
 interface UsageIndex {
   db: Readonly<MockDb>;
   upcoming: readonly Trip[];
@@ -168,6 +165,7 @@ export function toBusWithUsage(usage: UsageIndex, bus: Bus): BusWithUsage {
     ...bus,
     upcomingTripCount: trips.length,
     maxBookedOnUpcomingTrip: Math.max(0, ...trips.map((trip) => usage.bookedSeats.get(trip.id) ?? 0)),
+    totalTripCount: usage.db.trips.filter((trip) => trip.busId === bus.id).length,
   };
 }
 
@@ -175,13 +173,5 @@ export function toDriverWithUsage(usage: UsageIndex, driver: Driver): DriverWith
   return {
     ...driver,
     upcomingTripCount: usage.upcoming.filter((trip) => trip.driverId === driver.id).length,
-  };
-}
-
-export function toRouteWithUsage(usage: UsageIndex, route: Route): RouteWithUsage {
-  return {
-    ...route,
-    upcomingTripCount: usage.upcoming.filter((trip) => trip.routeId === route.id).length,
-    totalTripCount: usage.db.trips.filter((trip) => trip.routeId === route.id).length,
   };
 }

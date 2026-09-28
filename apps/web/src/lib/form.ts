@@ -5,7 +5,7 @@ import { isServiceError } from "@/services/errors";
 /**
  * Shows a service error's `fieldErrors` on the matching react-hook-form fields (the first one gets
  * focus). Form field names match the DTO field names; pass `fieldMap` where they differ, e.g.
- * `{ routeId: "to" }` on the trip form.
+ * `{ registrationNumber: "registration" }`.
  *
  * Returns whether any field error was applied. Errors without `fieldErrors` are left alone: the
  * global mutation handler already reports them as a toast.

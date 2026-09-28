@@ -3,6 +3,7 @@ import type {
   CancelTripResult,
   CreateTripInput,
   MyTripsQuery,
+  RouteEndpoints,
   TripDetails,
   TripListQuery,
   TripSearchItem,
@@ -16,6 +17,11 @@ import type {
 import { mockTripService } from "./mock/trip.mock";
 
 export interface TripService {
+  /**
+   * Public. The distinct origin → destination pairs served by active buses (both directions of
+   * each bus's route), sorted by origin then destination — the From / To options.
+   */
+  listRoutes(): Promise<RouteEndpoints[]>;
   /**
    * Public. Trips on `date` from `from` to `to` (case-insensitive), departure order; cancelled
    * trips are left out. On a holiday, `holiday` is set and `trips` is empty.
@@ -36,14 +42,17 @@ export interface TripService {
   /** Driver. Own trips from `dateFrom` (default today) to `dateTo` (default `dateFrom`), all statuses. */
   listMine(query?: MyTripsQuery): Promise<TripSummary[]>;
   /**
-   * Admin. @throws VALIDATION(PAST_DATE | TRIP_ON_HOLIDAY | RESOURCE_INACTIVE | TRIP_ENDS_AFTER_MIDNIGHT) ·
+   * Admin. The trip runs the bus's route in `direction`; `durationMinutes` is snapshotted from the bus.
+   * @throws VALIDATION(PAST_DATE | TRIP_ON_HOLIDAY | RESOURCE_INACTIVE | TRIP_ENDS_AFTER_MIDNIGHT) ·
    *   CONFLICT(BUS_BUSY | DRIVER_BUSY — `details.conflictingTrip` is the clashing TripSummary)
    */
   create(input: CreateTripInput): Promise<TripDetails>;
   /**
-   * Admin. Only scheduled trips; date and route are locked once booked (`permissions.lockedFields`).
-   * @throws NOT_FOUND · VALIDATION (as create) ·
-   *   CONFLICT(TRIP_NOT_EDITABLE | TRIP_LOCKED_FIELDS | CAPACITY_BELOW_BOOKINGS | BUS_BUSY | DRIVER_BUSY)
+   * Admin. Only scheduled trips; date and direction are locked once booked (`permissions.lockedFields`)
+   * and the bus may then only change to one serving the same route. A bus change re-snapshots
+   * `durationMinutes`.
+   * @throws NOT_FOUND · VALIDATION (as create) · CONFLICT(TRIP_NOT_EDITABLE | TRIP_LOCKED_FIELDS |
+   *   TRIP_BUS_ROUTE_MISMATCH | CAPACITY_BELOW_BOOKINGS | BUS_BUSY | DRIVER_BUSY)
    */
   update(id: string, patch: UpdateTripInput): Promise<TripDetails>;
   /** Admin. Scheduled trips only; cancels their confirmed bookings. @throws NOT_FOUND · CONFLICT(INVALID_TRANSITION) */

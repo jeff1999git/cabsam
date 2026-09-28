@@ -9,13 +9,16 @@ import "client-only";
 import {
   ACTIVE_TRIP_STATUSES,
   type Booking,
+  type Bus,
   type CancellationSource,
   type Holiday,
   type ISODate,
+  type RouteEndpoints,
   type ServiceErrorReason,
   type TimeHM,
   type Trip,
   type TripBookability,
+  type TripDirection,
   type TripEditableField,
   type TripPermissions,
   type User,
@@ -25,15 +28,33 @@ import { BOOKING_CUTOFF_MINUTES, TURNAROUND_MINUTES } from "@/config/business";
 import { formatDayMonth, hasDeparted, type IstNow, toMinutes } from "@/lib/datetime";
 import { bookingIdPrefix, formatBookingId } from "@/lib/mock/bookings";
 import type { MockDb } from "@/lib/mock/db";
+import { isSameStop } from "@/lib/schemas/common";
 
 const MINUTES_PER_DAY = 1_440;
 
-/** Fields that cannot change once a trip has bookings. */
-const FIELDS_LOCKED_BY_BOOKINGS: readonly TripEditableField[] = ["date", "routeId"];
+/** Fields that cannot change once a trip has bookings (a bus change must keep the same route). */
+const FIELDS_LOCKED_BY_BOOKINGS: readonly TripEditableField[] = ["date", "direction"];
 
 export interface RuleViolation {
   reason: ServiceErrorReason;
   message: string;
+}
+
+// ── Routes ───────────────────────────────────────────────────────────────────────────────────
+
+/** The stops a trip runs between: outbound = the bus's origin → destination, return = the reverse. */
+export function routeEndpoints(
+  bus: Pick<Bus, "origin" | "destination">,
+  direction: TripDirection,
+): RouteEndpoints {
+  return direction === "outbound"
+    ? { origin: bus.origin, destination: bus.destination }
+    : { origin: bus.destination, destination: bus.origin };
+}
+
+/** Same stops in the same order, compared case-insensitively. */
+export function isSameRoute(a: RouteEndpoints, b: RouteEndpoints): boolean {
+  return isSameStop(a.origin, b.origin) && isSameStop(a.destination, b.destination);
 }
 
 // ── Trips ────────────────────────────────────────────────────────────────────────────────────
@@ -42,7 +63,7 @@ function isActiveTrip(trip: Trip): boolean {
   return (ACTIVE_TRIP_STATUSES as readonly string[]).includes(trip.status);
 }
 
-/** Scheduled or in progress, dated today or later — the trips that pin a bus, driver or route. */
+/** Scheduled or in progress, dated today or later — the trips that pin a bus or driver. */
 function isUpcomingTrip(trip: Trip, today: ISODate): boolean {
   return isActiveTrip(trip) && trip.date >= today;
 }

@@ -1,4 +1,4 @@
-import type { RouteRef } from "@excelcabs/types";
+import type { RouteEndpoints } from "@excelcabs/types";
 
 /** '9947963408' → '99479 63408'. Anything that is not 10 digits is returned unchanged. */
 export function formatMobile(mobile: string): string {
@@ -26,6 +26,6 @@ export function formatOccupancy(booked: number, capacity: number): string {
 }
 
 /** 'Shakthan Stand → SmartCity' */
-export function formatRoute(route: Pick<RouteRef, "origin" | "destination">): string {
+export function formatRoute(route: RouteEndpoints): string {
   return `${route.origin} → ${route.destination}`;
 }

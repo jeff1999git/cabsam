@@ -10,7 +10,7 @@ import { createSeedDb } from "./seed";
 
 const DB_KEY_PREFIX = "excelcabs:db:";
 const DB_KEY = `${DB_KEY_PREFIX}v${SCHEMA_VERSION}`;
-const COLLECTIONS = ["users", "credentials", "routes", "buses", "trips", "bookings", "holidays"] as const;
+const COLLECTIONS = ["users", "credentials", "buses", "trips", "bookings", "holidays"] as const;
 
 type ReseedReason = "stale" | "corrupt" | "version" | "reset";
 

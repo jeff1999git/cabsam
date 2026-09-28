@@ -21,7 +21,6 @@ export type BookingFilters = z.infer<typeof bookingFiltersSchema>;
 export const tripFiltersSchema = z.object({
   dateFrom: optionalDate,
   dateTo: optionalDate,
-  routeId: optionalText,
   busId: optionalText,
   driverId: optionalText,
   status: z.enum(TRIP_STATUSES).optional().catch(undefined),

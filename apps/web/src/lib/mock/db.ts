@@ -1,7 +1,7 @@
-import type { Booking, Bus, Holiday, ISODate, Route, Trip, User } from "@excelcabs/types";
+import type { Booking, Bus, Holiday, ISODate, Trip, User } from "@excelcabs/types";
 
 /** Bump when the persisted shape changes; stored data with another version is reseeded. */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /** DEMO ONLY: plaintext password, kept apart from the user record like a real auth backend. */
 export interface CredentialRecord {
@@ -16,7 +16,6 @@ export interface MockDb {
   seededOn: ISODate;
   users: User[];
   credentials: CredentialRecord[];
-  routes: Route[];
   buses: Bus[];
   trips: Trip[];
   bookings: Booking[];

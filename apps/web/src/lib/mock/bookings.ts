@@ -68,7 +68,7 @@ interface GenerateBookingsOptions {
 
 /** Stable per timetable slot and day offset, so every day's data looks the same. */
 function rngForTrip(purpose: string, trip: Trip, dayOffset: number): Rng {
-  return rngFor(purpose, trip.departureTime, trip.routeId, dayOffset);
+  return rngFor(purpose, trip.departureTime, trip.busId, trip.direction, dayOffset);
 }
 
 function seatsFor(customers: readonly Customer[], cancelledByCustomer: boolean): Seat[] {

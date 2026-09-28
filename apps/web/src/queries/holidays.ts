@@ -27,7 +27,7 @@ export function useHolidayImpact(date: ISODate | null | undefined) {
 export function useCreateHoliday() {
   return useMutation({
     mutationFn: holidayService.create,
-    meta: { invalidates: ["holidays", "trips", "bookings", "dashboard", "buses", "drivers", "routes"] },
+    meta: { invalidates: ["holidays", "trips", "bookings", "dashboard", "buses", "drivers"] },
   });
 }
 

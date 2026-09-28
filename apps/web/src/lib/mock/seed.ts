@@ -7,7 +7,6 @@ import { buildBuses } from "./buses";
 import { type MockDb, SCHEMA_VERSION } from "./db";
 import { buildDrivers } from "./drivers";
 import { generateHolidays } from "./holidays";
-import { buildRoutes } from "./routes";
 import { generateTrips, operatingDays } from "./trips";
 import { buildAdmin, buildDemoCustomer, buildFixedPassengers, generateCustomers } from "./users";
 
@@ -27,11 +26,10 @@ export function createSeedDb(today: ISODate, seededAtMs: number): MockDb {
   );
   const customers = generateCustomers(today, GENERATED_CUSTOMERS, reservedMobiles);
 
-  const routes = buildRoutes(today);
   const buses = buildBuses(today);
   const holidays = generateHolidays(today);
   const days = operatingDays(today, new Set(holidays.map((holiday) => holiday.date)));
-  const trips = generateTrips({ today, days, routes, seededAtMs });
+  const trips = generateTrips({ today, days, buses, seededAtMs });
   const bookings = generateBookings({
     today,
     seededAtMs,
@@ -49,7 +47,6 @@ export function createSeedDb(today: ISODate, seededAtMs: number): MockDb {
     seededOn: today,
     users,
     credentials: users.map((user) => ({ userId: user.id, password: DEMO_PASSWORD })),
-    routes,
     buses,
     trips,
     bookings,

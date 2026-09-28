@@ -5,6 +5,5 @@ export * from "./common";
 export * from "./dashboard";
 export * from "./errors";
 export * from "./holiday";
-export * from "./route";
 export * from "./trip";
 export * from "./user";

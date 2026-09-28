@@ -1,7 +1,8 @@
-import type { Trip } from "@excelcabs/types";
+import { TRIP_DIRECTIONS, type Trip } from "@excelcabs/types";
 
 import { TURNAROUND_MINUTES } from "@/config/business";
 import { toMinutes } from "@/lib/datetime";
+import { isSameStop } from "@/lib/schemas/common";
 
 import { BOOKING_ID_RE, bookingIdPrefix } from "./bookings";
 import type { MockDb } from "./db";
@@ -38,18 +39,23 @@ function overlaps(a: Trip, b: Trip): boolean {
 function findDbViolations(db: Readonly<MockDb>): string[] {
   const violations: string[] = [];
   const users = new Map(db.users.map((user) => [user.id, user]));
-  const routes = new Map(db.routes.map((route) => [route.id, route]));
   const buses = new Map(db.buses.map((bus) => [bus.id, bus]));
   const trips = new Map(db.trips.map((trip) => [trip.id, trip]));
   const holidayDates = new Set(db.holidays.map((holiday) => holiday.date));
   const credentialUsers = new Set(db.credentials.map((credential) => credential.userId));
 
-  const collections = { users: db.users, routes: db.routes, buses: db.buses, trips: db.trips, bookings: db.bookings, holidays: db.holidays };
+  const collections = { users: db.users, buses: db.buses, trips: db.trips, bookings: db.bookings, holidays: db.holidays };
   for (const [name, items] of Object.entries(collections)) {
     for (const id of duplicates(items.map((item) => item.id))) violations.push(`${name}: duplicate id ${id}`);
   }
   for (const email of duplicates(db.users.map((user) => user.email.toLowerCase()))) {
     violations.push(`users: duplicate email ${email}`);
+  }
+  for (const name of duplicates(db.buses.map((bus) => bus.name.toLowerCase()))) {
+    violations.push(`buses: duplicate name ${name}`);
+  }
+  for (const registration of duplicates(db.buses.map((bus) => bus.registrationNumber))) {
+    violations.push(`buses: duplicate registration ${registration}`);
   }
   for (const date of duplicates(db.holidays.map((holiday) => holiday.date))) {
     violations.push(`holidays: duplicate date ${date}`);
@@ -58,20 +64,25 @@ function findDbViolations(db: Readonly<MockDb>): string[] {
     if (!credentialUsers.has(user.id)) violations.push(`users: ${user.id} has no credential`);
   }
 
+  for (const bus of db.buses) {
+    if (isSameStop(bus.origin, bus.destination)) violations.push(`bus ${bus.id}: origin equals destination`);
+    if (bus.durationMinutes <= 0) violations.push(`bus ${bus.id}: duration is not positive`);
+  }
+
   for (const trip of db.trips) {
-    const route = routes.get(trip.routeId);
     const bus = buses.get(trip.busId);
     const driver = users.get(trip.driverId);
-    if (!route) violations.push(`trip ${trip.id}: unknown route ${trip.routeId}`);
     if (!bus) violations.push(`trip ${trip.id}: unknown bus ${trip.busId}`);
+    if (!TRIP_DIRECTIONS.includes(trip.direction)) violations.push(`trip ${trip.id}: unknown direction ${trip.direction}`);
     if (driver?.role !== "driver") violations.push(`trip ${trip.id}: ${trip.driverId} is not a driver`);
+    if (trip.durationMinutes <= 0) violations.push(`trip ${trip.id}: duration is not positive`);
     if (toMinutes(trip.departureTime) + trip.durationMinutes > MINUTES_PER_DAY) {
       violations.push(`trip ${trip.id}: ends after midnight`);
     }
     const isUpcoming = (trip.status === "scheduled" || trip.status === "in_progress") && trip.date >= db.seededOn;
     if (isUpcoming && holidayDates.has(trip.date)) violations.push(`trip ${trip.id}: runs on a holiday`);
-    if (isUpcoming && (route?.status !== "active" || bus?.status !== "active" || driver?.status !== "active")) {
-      violations.push(`trip ${trip.id}: uses an inactive route, bus or driver`);
+    if (isUpcoming && (bus?.status !== "active" || driver?.status !== "active")) {
+      violations.push(`trip ${trip.id}: uses an inactive bus or driver`);
     }
   }
 

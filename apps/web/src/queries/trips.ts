@@ -12,14 +12,13 @@ import { tripService } from "@/services/trip.service";
 import { LIVE_REFETCH_INTERVAL_MS } from "./client";
 import { type QueryDomain, queryKeys } from "./keys";
 
-/** Trip writes change seat counts, schedules and the usage counts of buses, drivers and routes. */
+/** Trip writes change seat counts, schedules and the usage counts of buses and drivers. */
 const TRIP_WRITE_INVALIDATES = [
   "trips",
   "bookings",
   "dashboard",
   "buses",
   "drivers",
-  "routes",
 ] as const satisfies readonly QueryDomain[];
 
 const TRIP_STATUS_INVALIDATES = ["trips", "bookings", "dashboard"] as const satisfies readonly QueryDomain[];
@@ -83,7 +82,7 @@ export function useMyTrips(query?: MyTripsQuery) {
 export function useCreateTrip() {
   return useMutation({
     mutationFn: tripService.create,
-    meta: { invalidates: ["trips", "dashboard", "buses", "drivers", "routes"] },
+    meta: { invalidates: ["trips", "dashboard", "buses", "drivers"] },
   });
 }
 

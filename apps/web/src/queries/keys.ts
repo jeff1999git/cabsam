@@ -6,7 +6,6 @@ import type {
   ISODate,
   MyBookingsQuery,
   MyTripsQuery,
-  RouteListQuery,
   TripListQuery,
   TripSearchQuery,
 } from "@excelcabs/types";
@@ -34,8 +33,7 @@ export const queryKeys = {
     me: () => ["auth", "me"] as const,
   },
   routes: {
-    active: () => ["routes", "active"] as const,
-    list: (query?: RouteListQuery) => ["routes", "list", clean(query)] as const,
+    list: () => ["routes", "list"] as const,
   },
   trips: {
     search: (query: TripSearchQuery | null) => ["trips", "search", query] as const,
