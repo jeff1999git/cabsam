@@ -165,7 +165,7 @@ function TripForm({ formId, defaults, minDate, lockedFields, current, submit }: 
           render={({ field, fieldState }) => (
             <Field data-invalid={fieldState.invalid}>
               <FieldLabel htmlFor={`${id}-time`} className={eyebrowClassName}>
-                Departure time
+                Time
               </FieldLabel>
               <Input
                 {...field}

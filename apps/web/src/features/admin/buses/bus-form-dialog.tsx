@@ -115,7 +115,7 @@ export function BusFormDialog({ open, onOpenChange, bus }: BusFormDialogProps) {
             control={form.control}
             render={({ field, fieldState }) => (
               <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor={`${id}-name`}>Bus name</FieldLabel>
+                <FieldLabel htmlFor={`${id}-name`}>Bus Name</FieldLabel>
                 <Input
                   {...field}
                   id={`${id}-name`}
@@ -133,7 +133,7 @@ export function BusFormDialog({ open, onOpenChange, bus }: BusFormDialogProps) {
             control={form.control}
             render={({ field, fieldState }) => (
               <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor={`${id}-registration`}>Registration number</FieldLabel>
+                <FieldLabel htmlFor={`${id}-registration`}>Registration Number</FieldLabel>
                 <Input
                   {...field}
                   onChange={(event) => field.onChange(event.target.value.toUpperCase())}

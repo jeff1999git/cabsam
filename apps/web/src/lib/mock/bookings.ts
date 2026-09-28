@@ -1,4 +1,12 @@
-import type { Booking, Bus, Customer, ISODate, Trip } from "@excelcabs/types";
+import type {
+  Booking,
+  Bus,
+  CancellationSource,
+  Customer,
+  ISODate,
+  ISODateTime,
+  Trip,
+} from "@excelcabs/types";
 
 import { diffDays, formatDDMMYY, istToEpoch } from "@/lib/datetime";
 
@@ -20,6 +28,9 @@ const MS_PER_MINUTE = 60_000;
 const MS_PER_DAY = 86_400_000;
 const CUSTOMER_CANCEL_RATE = 0.06;
 const TRIP_CANCELLED_REASON = "Trip cancelled by operator";
+const ACCOUNT_DISABLED_REASON = "Account disabled";
+/** `createdPoint` of a booking pinned to the end of its date's booking window. */
+const LAST_IN_WINDOW = 1;
 
 /** Share of seats taken, by calendar-day offset from today. */
 function loadRange(dayOffset: number): readonly [number, number] {
@@ -43,6 +54,9 @@ const DEMO_CUSTOMER_TRIPS = [
   { opDay: 3, templateId: "t4", cancelled: false },
 ] as const;
 
+/** The disabled spam account's one booking, cancelled when the admin disabled the account. */
+const DISABLED_CUSTOMER_TRIP = { opDay: 2, templateId: "t3" } as const;
+
 /** Today's 7:00 AM manifest: the fixed riders + 15 others = 18 of 40 seats, plus 2 cancellations. */
 const TODAY_T1 = { templateId: "t1", others: 15, cancelled: 2 } as const;
 /** The next operating day's 9:00 AM trip is sold out. */
@@ -50,7 +64,10 @@ const FULL_TRIP = { opDay: 1, templateId: "t4", cancelled: 1 } as const;
 
 interface Seat {
   customer: Customer;
-  cancelledByCustomer: boolean;
+  /** Cancelled before departure by the customer, or by the admin disabling the account. */
+  cancelledBy: Extract<CancellationSource, "customer" | "admin"> | null;
+  /** Fixed position in the date's booking window (random when omitted). */
+  createdPoint?: number;
 }
 
 interface GenerateBookingsOptions {
@@ -64,6 +81,8 @@ interface GenerateBookingsOptions {
   /** Always booked on today's 7:00 AM trip. */
   fixedPassengers: readonly Customer[];
   demoCustomer: Customer;
+  /** Disabled account whose one booking was cancelled at `disabledAt`. */
+  disabledCustomer: { customer: Customer; disabledAt: ISODateTime };
 }
 
 /** Stable per timetable slot and day offset, so every day's data looks the same. */
@@ -72,14 +91,36 @@ function rngForTrip(purpose: string, trip: Trip, dayOffset: number): Rng {
 }
 
 function seatsFor(customers: readonly Customer[], cancelledByCustomer: boolean): Seat[] {
-  return customers.map((customer) => ({ customer, cancelledByCustomer }));
+  return customers.map((customer) => ({ customer, cancelledBy: cancelledByCustomer ? "customer" : null }));
 }
 
 function randomSeats(rng: Rng, pool: readonly Customer[], count: number): Seat[] {
   return rng
     .shuffle(pool)
     .slice(0, count)
-    .map((customer) => ({ customer, cancelledByCustomer: rng.chance(CUSTOMER_CANCEL_RATE) }));
+    .map((customer) => ({ customer, cancelledBy: rng.chance(CUSTOMER_CANCEL_RATE) ? "customer" : null }));
+}
+
+/** Seats of the named accounts, by trip id: Arjun's history and the spam account's one booking. */
+function pinnedSeats(options: GenerateBookingsOptions): Map<string, Seat[]> {
+  const { today, days, demoCustomer, disabledCustomer } = options;
+  const pinned = new Map<string, Seat[]>();
+  const pin = (opDay: number, templateId: string, seat: Seat) => {
+    const date = nthOperatingDay(days, today, opDay);
+    if (!date) return;
+    const id = tripId(date, templateId);
+    pinned.set(id, [...(pinned.get(id) ?? []), seat]);
+  };
+  for (const { opDay, templateId, cancelled } of DEMO_CUSTOMER_TRIPS) {
+    pin(opDay, templateId, { customer: demoCustomer, cancelledBy: cancelled ? "customer" : null });
+  }
+  // Last booking of its date, so every other booking keeps its id.
+  pin(DISABLED_CUSTOMER_TRIP.opDay, DISABLED_CUSTOMER_TRIP.templateId, {
+    customer: disabledCustomer.customer,
+    cancelledBy: "admin",
+    createdPoint: LAST_IN_WINDOW,
+  });
+  return pinned;
 }
 
 /** Seated passengers for one trip, drawn without replacement (no duplicate mobiles). */
@@ -87,12 +128,11 @@ function manifestFor(
   trip: Trip,
   capacity: number,
   options: GenerateBookingsOptions,
-  demoSeat: Seat | undefined,
+  pinned: readonly Seat[],
 ): Seat[] {
   const { today, days, pool, fixedPassengers } = options;
   const dayOffset = diffDays(today, trip.date);
   const rng = rngForTrip("bookings", trip, dayOffset);
-  const demo = demoSeat ? [demoSeat] : [];
 
   if (trip.id === tripId(today, TODAY_T1.templateId)) {
     const fixedIds = new Set(fixedPassengers.map((customer) => customer.id));
@@ -101,29 +141,30 @@ function manifestFor(
       ...seatsFor(fixedPassengers, false),
       ...seatsFor(others.slice(0, TODAY_T1.others), false),
       ...seatsFor(others.slice(TODAY_T1.others, TODAY_T1.others + TODAY_T1.cancelled), true),
-      ...demo,
+      ...pinned,
     ];
   }
 
+  const pinnedSeated = pinned.filter((seat) => seat.cancelledBy === null).length;
   const fullTripDate = nthOperatingDay(days, today, FULL_TRIP.opDay);
   if (fullTripDate && trip.id === tripId(fullTripDate, FULL_TRIP.templateId)) {
     const riders = rng.shuffle(pool);
-    const seated = capacity - demo.length;
+    const seated = capacity - pinnedSeated;
     return [
       ...seatsFor(riders.slice(0, seated), false),
       ...seatsFor(riders.slice(seated, seated + FULL_TRIP.cancelled), true),
-      ...demo,
+      ...pinned,
     ];
   }
 
   const [minLoad, maxLoad] = loadRange(dayOffset);
   const target = Math.round(capacity * rng.float(minLoad, maxLoad));
-  return [...randomSeats(rng, pool, Math.max(0, target - demo.length)), ...demo];
+  return [...randomSeats(rng, pool, Math.max(0, target - pinnedSeated)), ...pinned];
 }
 
 interface DraftBooking extends Seat {
   trip: Trip;
-  /** Position of the booking within its trip date's booking window, in [0, 1). */
+  /** Position of the booking within its trip date's booking window, in [0, 1]. */
   createdPoint: number;
   /** Position of a customer cancellation between creation and the latest possible moment. */
   cancelPoint: number;
@@ -145,9 +186,10 @@ function toBooking(
   draft: DraftBooking,
   id: string,
   createdMs: number,
-  seededAtMs: number,
+  options: Pick<GenerateBookingsOptions, "seededAtMs" | "disabledCustomer">,
 ): Booking {
-  const { trip, customer, cancelledByCustomer } = draft;
+  const { seededAtMs, disabledCustomer } = options;
+  const { trip, customer, cancelledBy } = draft;
   const createdAt = new Date(createdMs).toISOString();
   const base = {
     id,
@@ -163,7 +205,18 @@ function toBooking(
   } as const;
   const tripCancelledMs = trip.cancelledAt ? Date.parse(trip.cancelledAt) : Infinity;
 
-  if (cancelledByCustomer) {
+  if (cancelledBy === "admin") {
+    const cancelledAt = disabledCustomer.disabledAt;
+    return {
+      ...base,
+      status: "cancelled",
+      updatedAt: cancelledAt,
+      cancelledAt,
+      cancellationSource: "admin",
+      cancellationReason: ACCOUNT_DISABLED_REASON,
+    };
+  }
+  if (cancelledBy === "customer") {
     const latestMs = Math.min(
       istToEpoch(trip.date, trip.departureTime) - 10 * MS_PER_MINUTE,
       seededAtMs - MS_PER_MINUTE,
@@ -200,15 +253,9 @@ function toBooking(
  * (EXC-DDMMYY-001, -002, …), exactly as `nextBookingId` numbers new bookings.
  */
 export function generateBookings(options: GenerateBookingsOptions): Booking[] {
-  const { today, days, trips, buses, demoCustomer, seededAtMs } = options;
+  const { today, days, trips, buses, seededAtMs } = options;
   const capacityByBus = new Map(buses.map((bus) => [bus.id, bus.capacity]));
-  const demoSeats = new Map(
-    DEMO_CUSTOMER_TRIPS.flatMap(({ opDay, templateId, cancelled }) => {
-      const date = nthOperatingDay(days, today, opDay);
-      const seat: Seat = { customer: demoCustomer, cancelledByCustomer: cancelled };
-      return date ? [[tripId(date, templateId), seat] as const] : [];
-    }),
-  );
+  const pinned = pinnedSeats(options);
 
   return days.flatMap((date) => {
     const tripsOnDate = trips.filter((trip) => trip.date === date);
@@ -217,11 +264,11 @@ export function generateBookings(options: GenerateBookingsOptions): Booking[] {
       const capacity = capacityByBus.get(trip.busId);
       if (capacity === undefined) throw new Error(`Unknown bus ${trip.busId}`);
       const timingRng = rngForTrip("booking-times", trip, diffDays(today, date));
-      return manifestFor(trip, capacity, options, demoSeats.get(trip.id)).map(
+      return manifestFor(trip, capacity, options, pinned.get(trip.id) ?? []).map(
         (seat): DraftBooking => ({
           ...seat,
           trip,
-          createdPoint: timingRng.next(),
+          createdPoint: seat.createdPoint ?? timingRng.next(),
           cancelPoint: timingRng.next(),
         }),
       );
@@ -235,7 +282,7 @@ export function generateBookings(options: GenerateBookingsOptions): Booking[] {
           draft,
           formatBookingId(date, index + 1),
           Math.round(startMs + draft.createdPoint * (endMs - startMs)),
-          seededAtMs,
+          options,
         ),
       );
   });

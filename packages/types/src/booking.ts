@@ -47,6 +47,8 @@ export interface BookingListQuery extends PageQuery {
   date?: ISODate;
   status?: BookingStatus;
   tripId?: string;
+  /** Bookings made by one customer account. */
+  customerId?: string;
 }
 
 export interface CreateBookingInput {

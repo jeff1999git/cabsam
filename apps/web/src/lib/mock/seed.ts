@@ -8,9 +8,19 @@ import { type MockDb, SCHEMA_VERSION } from "./db";
 import { buildDrivers } from "./drivers";
 import { generateHolidays } from "./holidays";
 import { generateTrips, operatingDays } from "./trips";
-import { buildAdmin, buildDemoCustomer, buildFixedPassengers, generateCustomers } from "./users";
+import {
+  buildAdmin,
+  buildDemoCustomer,
+  buildFixedPassengers,
+  buildSpamCustomer,
+  buildTestCustomer,
+  generateCustomers,
+} from "./users";
 
 const GENERATED_CUSTOMERS = 60;
+/** The spam account was disabled (its booking cancelled) an hour before the data was generated. */
+const SPAM_DISABLED_MINUTES_BEFORE_SEED = 60;
+const MS_PER_MINUTE = 60_000;
 
 /**
  * Builds the demo database for `today` (IST). Everything is deterministic for a given date;
@@ -20,9 +30,12 @@ export function createSeedDb(today: ISODate, seededAtMs: number): MockDb {
   const admin = buildAdmin(today);
   const demoCustomer = buildDemoCustomer(today);
   const fixedPassengers = buildFixedPassengers(today);
+  const testCustomer = buildTestCustomer(today, seededAtMs);
+  const disabledAt = new Date(seededAtMs - SPAM_DISABLED_MINUTES_BEFORE_SEED * MS_PER_MINUTE).toISOString();
+  const spamCustomer = buildSpamCustomer(today, disabledAt);
   const drivers = buildDrivers(today);
   const reservedMobiles = new Set(
-    [admin, demoCustomer, ...fixedPassengers, ...drivers].map((user) => user.mobile),
+    [admin, demoCustomer, ...fixedPassengers, testCustomer, spamCustomer, ...drivers].map((user) => user.mobile),
   );
   const customers = generateCustomers(today, GENERATED_CUSTOMERS, reservedMobiles);
 
@@ -39,9 +52,18 @@ export function createSeedDb(today: ISODate, seededAtMs: number): MockDb {
     pool: [...customers, ...fixedPassengers],
     fixedPassengers,
     demoCustomer,
+    disabledCustomer: { customer: spamCustomer, disabledAt },
   });
 
-  const users: User[] = [admin, demoCustomer, ...fixedPassengers, ...customers, ...drivers];
+  const users: User[] = [
+    admin,
+    demoCustomer,
+    ...fixedPassengers,
+    testCustomer,
+    spamCustomer,
+    ...customers,
+    ...drivers,
+  ];
   return {
     schemaVersion: SCHEMA_VERSION,
     seededOn: today,

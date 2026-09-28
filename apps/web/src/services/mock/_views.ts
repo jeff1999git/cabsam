@@ -6,10 +6,13 @@ import type {
   BookingDetails,
   Bus,
   BusWithUsage,
+  Customer,
+  CustomerWithStats,
   Driver,
   DriverWithUsage,
   Holiday,
   ISODate,
+  ISODateTime,
   SessionUser,
   Trip,
   TripDetails,
@@ -174,4 +177,36 @@ export function toDriverWithUsage(usage: UsageIndex, driver: Driver): DriverWith
     ...driver,
     upcomingTripCount: usage.upcoming.filter((trip) => trip.driverId === driver.id).length,
   };
+}
+
+type CustomerStats = Pick<CustomerWithStats, "totalBookings" | "upcomingBookings" | "lastBookingAt">;
+
+const NO_BOOKINGS: CustomerStats = { totalBookings: 0, upcomingBookings: 0, lastBookingAt: null };
+
+/** Booking totals per customer id, computed once per call (accounts without bookings are absent). */
+export function customerStatsIndex(
+  db: Readonly<MockDb>,
+  today: ISODate,
+): ReadonlyMap<string, CustomerStats> {
+  const upcomingTripIds = new Set(upcomingTrips(db, today).map((trip) => trip.id));
+  const stats = new Map<string, CustomerStats>();
+  for (const booking of db.bookings) {
+    const entry = stats.get(booking.customerId) ?? { ...NO_BOOKINGS };
+    entry.totalBookings += 1;
+    if (booking.status === "confirmed" && upcomingTripIds.has(booking.tripId)) entry.upcomingBookings += 1;
+    entry.lastBookingAt = latest(entry.lastBookingAt, booking.createdAt);
+    stats.set(booking.customerId, entry);
+  }
+  return stats;
+}
+
+function latest(a: ISODateTime | null, b: ISODateTime): ISODateTime {
+  return a === null || b > a ? b : a;
+}
+
+export function toCustomerWithStats(
+  stats: ReadonlyMap<string, CustomerStats>,
+  customer: Customer,
+): CustomerWithStats {
+  return { ...customer, ...(stats.get(customer.id) ?? NO_BOOKINGS) };
 }

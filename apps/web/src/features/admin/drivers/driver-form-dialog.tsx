@@ -138,7 +138,7 @@ export function DriverFormDialog({ open, onOpenChange, driver }: DriverFormDialo
             control={form.control}
             render={({ field, fieldState }) => (
               <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor={`${id}-mobile`}>Mobile number</FieldLabel>
+                <FieldLabel htmlFor={`${id}-mobile`}>Mobile</FieldLabel>
                 <Input
                   {...field}
                   id={`${id}-mobile`}

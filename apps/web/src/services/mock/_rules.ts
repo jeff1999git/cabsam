@@ -13,6 +13,7 @@ import {
   type CancellationSource,
   type Holiday,
   type ISODate,
+  type ISODateTime,
   type RouteEndpoints,
   type ServiceErrorReason,
   type TimeHM,
@@ -196,6 +197,12 @@ export function lockedFieldsChanged(
   return bookedSeats > 0 ? changed.filter((field) => FIELDS_LOCKED_BY_BOOKINGS.includes(field)) : [];
 }
 
+export interface Cancellation<TSource extends CancellationSource = CancellationSource> {
+  reason: string;
+  source: TSource;
+  at: ISODateTime;
+}
+
 /**
  * Cancels a scheduled trip and its confirmed bookings (in the draft). Returns how many bookings
  * were cancelled.
@@ -203,7 +210,7 @@ export function lockedFieldsChanged(
 export function cancelTripWithBookings(
   draft: MockDb,
   trip: Trip,
-  cancellation: { reason: string; source: Extract<CancellationSource, "trip_cancelled" | "holiday">; at: string },
+  cancellation: Cancellation<"trip_cancelled" | "holiday">,
 ): number {
   Object.assign(trip, {
     status: "cancelled",
@@ -214,19 +221,44 @@ export function cancelTripWithBookings(
   let cancelled = 0;
   for (const booking of draft.bookings) {
     if (booking.tripId !== trip.id || booking.status !== "confirmed") continue;
-    Object.assign(booking, {
-      status: "cancelled",
-      cancelledAt: cancellation.at,
-      cancellationSource: cancellation.source,
-      cancellationReason: cancellation.reason,
-      updatedAt: cancellation.at,
-    } satisfies Partial<Booking>);
+    cancelBooking(booking, cancellation);
+    cancelled += 1;
+  }
+  return cancelled;
+}
+
+/**
+ * Cancels a customer's confirmed bookings on scheduled / in-progress trips (in the draft) when
+ * the admin disables the account. Returns how many bookings were cancelled.
+ */
+export function cancelCustomerBookings(
+  draft: MockDb,
+  customerId: string,
+  cancellation: Cancellation<"admin">,
+): number {
+  const activeTripIds = new Set(draft.trips.filter(isActiveTrip).map((trip) => trip.id));
+  let cancelled = 0;
+  for (const booking of draft.bookings) {
+    if (booking.customerId !== customerId || booking.status !== "confirmed") continue;
+    if (!activeTripIds.has(booking.tripId)) continue;
+    cancelBooking(booking, cancellation);
     cancelled += 1;
   }
   return cancelled;
 }
 
 // ── Bookings ─────────────────────────────────────────────────────────────────────────────────
+
+/** Marks a booking cancelled (in the draft); the caller has already checked it may be. */
+export function cancelBooking(booking: Booking, cancellation: Cancellation): void {
+  Object.assign(booking, {
+    status: "cancelled",
+    cancelledAt: cancellation.at,
+    cancellationSource: cancellation.source,
+    cancellationReason: cancellation.reason,
+    updatedAt: cancellation.at,
+  } satisfies Partial<Booking>);
+}
 
 export function countBookedSeats(bookings: readonly Booking[], tripId: string): number {
   return bookings.filter((booking) => booking.tripId === tripId && booking.status !== "cancelled")

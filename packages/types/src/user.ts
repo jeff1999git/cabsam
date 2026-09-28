@@ -29,12 +29,39 @@ export type Admin = User & { role: "admin" };
 
 export type DriverWithUsage = Driver & WithUsage;
 
+/** Admin users list row. */
+export type CustomerWithStats = Customer & {
+  /** Bookings made by the account, in any status. */
+  totalBookings: number;
+  /** Confirmed bookings on scheduled / in-progress trips dated today or later. */
+  upcomingBookings: number;
+  lastBookingAt: ISODateTime | null;
+};
+
 export type DriverRef = Pick<User, "id" | "name" | "mobile">;
 export type UserRef = Pick<User, "id" | "name" | "email">;
 
 export interface DriverListQuery {
   status?: AccountStatus;
   q?: string;
+}
+
+export interface CustomerListQuery {
+  status?: AccountStatus;
+  /** Matches name, email or mobile digits. */
+  q?: string;
+}
+
+export interface UpdateCustomerStatusInput {
+  status: AccountStatus;
+  /** Recorded on the bookings that disabling cancels (default "Account disabled"). */
+  reason?: string;
+}
+
+export interface UpdateCustomerStatusResult {
+  user: Customer;
+  /** Confirmed upcoming bookings cancelled by disabling the account (0 when enabling). */
+  cancelledBookings: number;
 }
 
 export interface CreateDriverInput {

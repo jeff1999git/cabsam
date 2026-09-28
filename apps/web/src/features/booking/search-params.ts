@@ -1,6 +1,7 @@
 import type { ISODate, TripSearchQuery } from "@excelcabs/types";
 import type { Route } from "next";
 
+import { DEFAULT_SEARCH_STOPS } from "@/config/business";
 import { isValidISODate } from "@/lib/datetime";
 import { isSameStop } from "@/lib/schemas/common";
 import type { RouteNetwork } from "@/queries/routes";
@@ -43,7 +44,7 @@ function pickStop(options: readonly string[], wanted: string | undefined): strin
 
 /**
  * Fills a partial or stale search with defaults: `minDate` (today) when the date is missing or in
- * the past, the first boarding point and its first destination when the stops are unknown.
+ * the past, the operator's main corridor (else the first served route) when the stops are unknown.
  * `null` until the route network has loaded, or when no route is active.
  */
 export function resolveTripSearch(
@@ -52,9 +53,9 @@ export function resolveTripSearch(
   minDate: ISODate,
 ): TripSearchState | null {
   if (!network) return null;
-  const from = pickStop(network.origins, raw.from);
+  const from = pickStop(network.origins, raw.from ?? DEFAULT_SEARCH_STOPS.from);
   if (from === undefined) return null;
-  const to = pickStop(network.destinationsByOrigin[from] ?? [], raw.to);
+  const to = pickStop(network.destinationsByOrigin[from] ?? [], raw.to ?? DEFAULT_SEARCH_STOPS.to);
   if (to === undefined) return null;
   const date = raw.date && isValidISODate(raw.date) && raw.date >= minDate ? raw.date : minDate;
   return { date, from, to };

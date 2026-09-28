@@ -1,6 +1,7 @@
 import type {
   BookingListQuery,
   BusListQuery,
+  CustomerListQuery,
   DriverListQuery,
   HolidayListQuery,
   ISODate,
@@ -18,6 +19,7 @@ export type QueryDomain =
   | "bookings"
   | "buses"
   | "drivers"
+  | "customers"
   | "holidays"
   | "dashboard";
 
@@ -53,6 +55,10 @@ export const queryKeys = {
   },
   drivers: {
     list: (query?: DriverListQuery) => ["drivers", "list", clean(query)] as const,
+  },
+  customers: {
+    list: (query?: CustomerListQuery) => ["customers", "list", clean(query)] as const,
+    detail: (id: string) => ["customers", "detail", id] as const,
   },
   holidays: {
     list: (query?: HolidayListQuery) => ["holidays", "list", clean(query)] as const,

@@ -103,8 +103,11 @@ function findDbViolations(db: Readonly<MockDb>): string[] {
       violations.push(`booking ${booking.id}: unknown trip ${booking.tripId}`);
       continue;
     }
-    if (users.get(booking.customerId)?.role !== "customer") {
+    const customer = users.get(booking.customerId);
+    if (customer?.role !== "customer") {
       violations.push(`booking ${booking.id}: ${booking.customerId} is not a customer`);
+    } else if (customer.status === "disabled" && booking.status === "confirmed") {
+      violations.push(`booking ${booking.id}: confirmed for disabled customer ${customer.id}`);
     }
     if (!BOOKING_ID_RE.test(booking.id) || !booking.id.startsWith(bookingIdPrefix(trip.date))) {
       violations.push(`booking ${booking.id}: id does not match trip date ${trip.date}`);

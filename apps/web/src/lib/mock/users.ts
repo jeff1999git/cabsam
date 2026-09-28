@@ -1,12 +1,16 @@
-import type { Admin, Customer, ISODate } from "@excelcabs/types";
+import type { Admin, Customer, ISODate, ISODateTime } from "@excelcabs/types";
 
 import { DEMO_ACCOUNTS } from "@/config/demo";
-import { addDays, istToInstant } from "@/lib/datetime";
+import { addDays, istToEpoch, istToInstant } from "@/lib/datetime";
 
 import { rngFor } from "./random";
 
 const ADMIN_USER_ID = "usr_admin";
 const DEMO_CUSTOMER_ID = "usr_customer_demo";
+const TEST_CUSTOMER_ID = "usr_customer_test";
+const SPAM_CUSTOMER_ID = "usr_customer_spam";
+
+const MS_PER_MINUTE = 60_000;
 
 function joinedAt(today: ISODate, daysAgo: number): string {
   return istToInstant(addDays(today, -daysAgo), "10:15");
@@ -37,6 +41,40 @@ export function buildDemoCustomer(today: ISODate): Customer {
     status: "active",
     createdAt,
     updatedAt: createdAt,
+  };
+}
+
+/** An obviously fake sign-up from earlier today with no bookings: the demo target for "Disable". */
+export function buildTestCustomer(today: ISODate, seededAtMs: number): Customer {
+  // Signed up this morning, but never after the moment the data was generated.
+  const createdMs = Math.max(
+    istToEpoch(today, "00:00"),
+    Math.min(istToEpoch(today, "09:40"), seededAtMs - 25 * MS_PER_MINUTE),
+  );
+  const createdAt = new Date(createdMs).toISOString();
+  return {
+    id: TEST_CUSTOMER_ID,
+    role: "customer",
+    name: "Test Test",
+    email: "test123@mailinator.com",
+    mobile: "9999999999",
+    status: "active",
+    createdAt,
+    updatedAt: createdAt,
+  };
+}
+
+/** A spam sign-up from 3 days ago that the admin disabled at `disabledAt` (see bookings.ts). */
+export function buildSpamCustomer(today: ISODate, disabledAt: ISODateTime): Customer {
+  return {
+    id: SPAM_CUSTOMER_ID,
+    role: "customer",
+    name: "Spam Account",
+    email: "promo.offers@spam-mail.biz",
+    mobile: "9000000001",
+    status: "disabled",
+    createdAt: joinedAt(today, 3),
+    updatedAt: disabledAt,
   };
 }
 

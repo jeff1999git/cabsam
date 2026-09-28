@@ -13,3 +13,9 @@ export const BOOKINGS_PAGE_SIZE = { default: 20, max: 100 } as const;
 
 /** Number of bookings listed under "Recent bookings" on the admin dashboard. */
 export const RECENT_BOOKINGS_LIMIT = 8;
+
+/**
+ * Stops the trip search opens on when the visitor has not chosen any — the operator's main
+ * corridor. Falls back to the first served route when no active bus runs it.
+ */
+export const DEFAULT_SEARCH_STOPS = { from: "Shakthan Stand", to: "SmartCity" } as const;

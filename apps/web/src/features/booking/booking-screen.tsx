@@ -230,7 +230,7 @@ function BookingFlow({ trip, user }: { trip: TripSearchItem; user: SessionUser }
               render={({ field, fieldState }) => (
                 <Field data-invalid={fieldState.invalid}>
                   <FieldLabel htmlFor={`${id}-mobile`} className={eyebrowClassName}>
-                    Mobile number
+                    Mobile Number
                   </FieldLabel>
                   <Input
                     {...field}

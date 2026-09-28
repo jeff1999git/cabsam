@@ -18,6 +18,7 @@ import type { BookingService } from "../booking.service";
 import { conflict, notFound } from "../errors";
 import {
   bookingCancelBlocker,
+  cancelBooking,
   holidayMessage,
   holidayOn,
   nextBookingId,
@@ -70,6 +71,7 @@ const SCOPE_STATUS: Record<Exclude<MyBookingScope, "all">, Booking["status"]> = 
 function matchesQuery(booking: Booking, trip: Trip | undefined, query: BookingListQuery): boolean {
   if (query.status && booking.status !== query.status) return false;
   if (query.tripId && booking.tripId !== query.tripId) return false;
+  if (query.customerId && booking.customerId !== query.customerId) return false;
   if (query.date && trip?.date !== query.date) return false;
   const q = query.q?.trim().toLowerCase();
   if (!q) return true;
@@ -167,15 +169,12 @@ export const mockBookingService: BookingService = {
       const blocker = bookingCancelBlocker(viewer, booking, tripOf(index, booking), now);
       if (blocker) throw conflict(blocker.reason, blocker.message);
 
-      const at = nowIso();
       const source = viewer.role === "admin" ? "admin" : "customer";
-      Object.assign(booking, {
-        status: "cancelled",
-        cancelledAt: at,
-        cancellationSource: source,
-        cancellationReason: reason || (source === "admin" ? "Cancelled by Excel Cabs" : "Cancelled by customer"),
-        updatedAt: at,
-      } satisfies Partial<Booking>);
+      cancelBooking(booking, {
+        reason: reason || (source === "admin" ? "Cancelled by Excel Cabs" : "Cancelled by customer"),
+        source,
+        at: nowIso(),
+      });
       return toBookingDetails(indexDb(draft), booking, viewer, now);
     });
   },

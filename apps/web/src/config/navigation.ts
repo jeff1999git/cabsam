@@ -9,6 +9,7 @@ import {
   Search,
   ShieldCheck,
   Ticket,
+  Users,
 } from "lucide-react";
 import type { Route } from "next";
 
@@ -34,6 +35,7 @@ export const ADMIN_NAV: readonly NavItem[] = [
   { label: "Trips", href: "/admin/trips", icon: CalendarDays },
   { label: "Buses", href: "/admin/buses", icon: BusFront },
   { label: "Drivers", href: "/admin/drivers", icon: IdCard },
+  { label: "Users", href: "/admin/users", icon: Users },
   { label: "Holidays", href: "/admin/holidays", icon: CalendarOff },
 ];
 
