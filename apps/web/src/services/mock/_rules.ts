@@ -9,53 +9,106 @@ import "client-only";
 import {
   ACTIVE_TRIP_STATUSES,
   type Booking,
-  type Bus,
   type CancellationSource,
   type Holiday,
   type ISODate,
   type ISODateTime,
-  type RouteEndpoints,
+  type ServiceClosure,
   type ServiceErrorReason,
+  type SkippedTripDate,
   type TimeHM,
   type Trip,
   type TripBookability,
-  type TripDirection,
   type TripEditableField,
   type TripPermissions,
+  type TripSchedulePreview,
+  type TripScheduleInput,
   type User,
 } from "@excelcabs/types";
 
 import { BOOKING_CUTOFF_MINUTES, TURNAROUND_MINUTES } from "@/config/business";
-import { formatDayMonth, hasDeparted, type IstNow, toMinutes } from "@/lib/datetime";
+import {
+  addDays,
+  dateTimeKey,
+  dayOfWeek,
+  diffDays,
+  formatDayMonth,
+  hasDeparted,
+  type IstNow,
+  toMinutes,
+} from "@/lib/datetime";
 import { bookingIdPrefix, formatBookingId } from "@/lib/mock/bookings";
 import type { MockDb } from "@/lib/mock/db";
-import { isSameStop } from "@/lib/schemas/common";
 
 const MINUTES_PER_DAY = 1_440;
 
-/** Fields that cannot change once a trip has bookings (a bus change must keep the same route). */
-const FIELDS_LOCKED_BY_BOOKINGS: readonly TripEditableField[] = ["date", "direction"];
+/** Fields that cannot change once a trip has bookings: passengers booked this date and route. */
+const FIELDS_LOCKED_BY_BOOKINGS: readonly TripEditableField[] = ["date", "origin", "destination"];
 
 export interface RuleViolation {
   reason: ServiceErrorReason;
   message: string;
 }
 
-// ── Routes ───────────────────────────────────────────────────────────────────────────────────
+// ── Service days ─────────────────────────────────────────────────────────────────────────────
 
-/** The stops a trip runs between: outbound = the bus's origin → destination, return = the reverse. */
-export function routeEndpoints(
-  bus: Pick<Bus, "origin" | "destination">,
-  direction: TripDirection,
-): RouteEndpoints {
-  return direction === "outbound"
-    ? { origin: bus.origin, destination: bus.destination }
-    : { origin: bus.destination, destination: bus.origin };
+export function holidayOn(db: Readonly<MockDb>, date: ISODate): Holiday | undefined {
+  return db.holidays.find((holiday) => holiday.date === date);
 }
 
-/** Same stops in the same order, compared case-insensitively. */
-export function isSameRoute(a: RouteEndpoints, b: RouteEndpoints): boolean {
-  return isSameStop(a.origin, b.origin) && isSameStop(a.destination, b.destination);
+/** Why there is no service on `date` given its holiday (if any): Sundays first, then holidays. */
+export function closureOf(date: ISODate, holiday: Holiday | undefined): ServiceClosure | null {
+  if (dayOfWeek(date) === 0) return { reason: "sunday" };
+  return holiday ? { reason: "holiday", holiday } : null;
+}
+
+/** Why there is no service on `date`, or null on an operating day (Mon–Sat, not a holiday). */
+export function closureOn(db: Readonly<MockDb>, date: ISODate): ServiceClosure | null {
+  return closureOf(date, holidayOn(db, date));
+}
+
+/** 'No service on Sundays' · 'No service on 2 Oct — Gandhi Jayanti' */
+export function closureMessage(closure: ServiceClosure): string {
+  return closure.reason === "sunday"
+    ? "No service on Sundays"
+    : `No service on ${formatDayMonth(closure.holiday.date)} — ${closure.holiday.reason}`;
+}
+
+/** The first operating day on or after `from`. */
+export function nextOperatingDay(db: Readonly<MockDb>, from: ISODate): ISODate {
+  let date = from;
+  while (closureOn(db, date)) date = addDays(date, 1);
+  return date;
+}
+
+function toSkippedDate(date: ISODate, closure: ServiceClosure): SkippedTripDate {
+  return closure.reason === "sunday"
+    ? { date, reason: "sunday" }
+    : { date, reason: "holiday", holidayReason: closure.holiday.reason };
+}
+
+/** Every date from `from` to `to`, both included. */
+function datesBetween(from: ISODate, to: ISODate): ISODate[] {
+  return Array.from({ length: diffDays(from, to) + 1 }, (_, offset) => addDays(from, offset));
+}
+
+/**
+ * The dates a create request asks for, split into those that get a trip and those without
+ * service. One-time: just `date`. Repeating: every date in [date, until] whose weekday is in
+ * `weekdays` (which never includes Sunday, so only holidays are skipped).
+ */
+export function scheduleDates(db: Readonly<MockDb>, input: TripScheduleInput): TripSchedulePreview {
+  const { date, repeat } = input;
+  const requested = repeat
+    ? datesBetween(date, repeat.until).filter((day) => repeat.weekdays.includes(dayOfWeek(day)))
+    : [date];
+  const preview: TripSchedulePreview = { dates: [], skipped: [] };
+  for (const day of requested) {
+    const closure = closureOn(db, day);
+    if (closure) preview.skipped.push(toSkippedDate(day, closure));
+    else preview.dates.push(day);
+  }
+  return preview;
 }
 
 // ── Trips ────────────────────────────────────────────────────────────────────────────────────
@@ -73,12 +126,22 @@ export function upcomingTrips(db: Readonly<MockDb>, today: ISODate): Trip[] {
   return db.trips.filter((trip) => isUpcomingTrip(trip, today));
 }
 
-export function holidayOn(db: Readonly<MockDb>, date: ISODate): Holiday | undefined {
-  return db.holidays.find((holiday) => holiday.date === date);
-}
-
-export function holidayMessage(holiday: Holiday): string {
-  return `No service on ${formatDayMonth(holiday.date)} — ${holiday.reason}`;
+/**
+ * What cancelling `trip` with scope "series" cancels: the trip itself plus the scheduled trips of
+ * its series that depart after it. Empty when the trip is not scheduled.
+ */
+export function seriesCancelTargets(db: Readonly<MockDb>, trip: Trip): Trip[] {
+  if (trip.status !== "scheduled") return [];
+  const departure = dateTimeKey(trip.date, trip.departureTime);
+  const later = trip.seriesId
+    ? db.trips.filter(
+        (other) =>
+          other.seriesId === trip.seriesId &&
+          other.status === "scheduled" &&
+          dateTimeKey(other.date, other.departureTime) > departure,
+      )
+    : [];
+  return [trip, ...later];
 }
 
 export function endsAfterMidnight(departureTime: TimeHM, durationMinutes: number): boolean {
@@ -90,13 +153,13 @@ function isBookingClosed(trip: Trip, now: IstNow): boolean {
   return hasDeparted(trip.date, trip.departureTime, BOOKING_CUTOFF_MINUTES, now);
 }
 
-/** Checked in this order: status → holiday → departure → seats. */
+/** Checked in this order: status → no service that day (Sunday / holiday) → departure → seats. */
 export function tripBookability(
   trip: Trip,
-  context: { holiday: Holiday | undefined; availableSeats: number; now: IstNow },
+  context: { closure: ServiceClosure | null; availableSeats: number; now: IstNow },
 ): TripBookability {
   if (trip.status !== "scheduled") return { bookable: false, reason: "not_scheduled" };
-  if (context.holiday) return { bookable: false, reason: "holiday" };
+  if (context.closure) return { bookable: false, reason: "holiday" };
   if (isBookingClosed(trip, context.now)) return { bookable: false, reason: "departed" };
   if (context.availableSeats <= 0) return { bookable: false, reason: "full" };
   return { bookable: true };

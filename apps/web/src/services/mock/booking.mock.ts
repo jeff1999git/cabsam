@@ -19,8 +19,8 @@ import { conflict, notFound } from "../errors";
 import {
   bookingCancelBlocker,
   cancelBooking,
-  holidayMessage,
-  holidayOn,
+  closureMessage,
+  closureOn,
   nextBookingId,
   type RuleViolation,
 } from "./_rules";
@@ -37,8 +37,8 @@ function unbookableViolation(
     case "not_scheduled":
       return { reason: "TRIP_NOT_SCHEDULED", message: "This trip is no longer open for booking" };
     case "holiday": {
-      const holiday = holidayOn(db, trip.date);
-      return { reason: "TRIP_ON_HOLIDAY", message: holiday ? holidayMessage(holiday) : "No service on this day" };
+      const closure = closureOn(db, trip.date);
+      return { reason: "TRIP_ON_HOLIDAY", message: closure ? closureMessage(closure) : "No service on this day" };
     }
     case "departed":
       return { reason: "TRIP_DEPARTED", message: "This trip has already departed" };

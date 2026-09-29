@@ -1,6 +1,6 @@
 "use client";
 
-import { TRIP_STATUSES, type TripDetails, type TripStatus, type TripSummary } from "@excelcabs/types";
+import { TRIP_STATUSES, type TripStatus, type TripSummary } from "@excelcabs/types";
 import { Button } from "@excelcabs/ui/components/button";
 import { Input } from "@excelcabs/ui/components/input";
 import { Label } from "@excelcabs/ui/components/label";
@@ -10,7 +10,7 @@ import { EmptyState } from "@excelcabs/ui/composites/empty-state";
 import { PageHeader } from "@excelcabs/ui/composites/page-header";
 import { eyebrowClassName } from "@excelcabs/ui/lib/styles";
 import { cn } from "@excelcabs/ui/lib/utils";
-import { CalendarDays, CalendarX2, Plus, X } from "lucide-react";
+import { CalendarDays, CalendarX2, Plus, Repeat, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 
@@ -47,6 +47,16 @@ function toTripStatus(value: string): TripStatus | undefined {
 /** List rows carry no `permissions`; edit and cancel are offered for upcoming trips, as the service allows. */
 function isActionable(trip: TripSummary): boolean {
   return trip.status === "scheduled";
+}
+
+/** Small "Repeats" marker for trips created as part of a repeating schedule. */
+function RepeatsBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-xs font-medium whitespace-nowrap text-primary">
+      <Repeat className="size-3" aria-hidden="true" />
+      Repeats
+    </span>
+  );
 }
 
 interface RowActionsProps {
@@ -104,12 +114,14 @@ function TripCard({ trip, dateHeading, highlighted, ...actions }: TripCardProps)
               <p className="font-semibold">{trip.bus.name}</p>
               <span className="font-mono text-xs text-muted-foreground">{trip.bus.registrationNumber}</span>
               <TripStatusBadge status={trip.status} />
+              {trip.seriesId ? <RepeatsBadge /> : null}
             </div>
             <p className="mt-0.5 text-sm text-muted-foreground">
               <RouteLabel route={trip.route} compact />
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {trip.driver.name} · {formatOccupancy(trip.bookedSeats, trip.capacity)} booked
+              Arrives {formatTime(trip.arrivalTime)} · {trip.driver.name} ·{" "}
+              {formatOccupancy(trip.bookedSeats, trip.capacity)} booked
             </p>
           </div>
         </div>
@@ -203,7 +215,7 @@ export function AdminTripsScreen() {
     setCancel({ trip, open: true });
   }
 
-  function revealCreated(trip: TripDetails) {
+  function revealCreated(trip: TripSummary) {
     if (!matchesTripsParams(trip, params, todayDate)) {
       router.replace(tripsHref({ view: "date", date: trip.date }), { scroll: false });
     }
@@ -230,8 +242,25 @@ export function AdminTripsScreen() {
         </span>
       ),
     },
-    { id: "time", header: "Time", cell: (trip) => <span className="whitespace-nowrap">{formatTime(trip.departureTime)}</span> },
-    { id: "route", header: "Route", cell: (trip) => <RouteLabel route={trip.route} compact /> },
+    {
+      id: "time",
+      header: "Time",
+      cell: (trip) => (
+        <span className="whitespace-nowrap">
+          {formatTime(trip.departureTime)} → {formatTime(trip.arrivalTime)}
+        </span>
+      ),
+    },
+    {
+      id: "route",
+      header: "Route",
+      cell: (trip) => (
+        <span className="flex flex-col items-start gap-1">
+          <RouteLabel route={trip.route} compact />
+          {trip.seriesId ? <RepeatsBadge /> : null}
+        </span>
+      ),
+    },
     {
       id: "bus",
       header: "Bus",

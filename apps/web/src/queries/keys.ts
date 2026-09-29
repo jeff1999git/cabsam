@@ -8,6 +8,7 @@ import type {
   MyBookingsQuery,
   MyTripsQuery,
   TripListQuery,
+  TripScheduleInput,
 } from "@excelcabs/types";
 
 /** First segment of every query key — the unit mutations invalidate (`meta.invalidates`). */
@@ -34,6 +35,10 @@ export const queryKeys = {
   },
   trips: {
     search: (date: ISODate | null) => ["trips", "search", date] as const,
+    /** Under "trips" so holiday writes (which invalidate trips) refresh it. `null` = from today. */
+    nextOperatingDay: (from: ISODate | null) => ["trips", "next-operating-day", from] as const,
+    /** `input` is normalised by `usePreviewSchedule`. */
+    schedulePreview: (input: TripScheduleInput | null) => ["trips", "schedule-preview", input] as const,
     forBooking: (id: string) => ["trips", "for-booking", id] as const,
     list: (query?: TripListQuery) => ["trips", "list", clean(query)] as const,
     detail: (id: string) => ["trips", "detail", id] as const,

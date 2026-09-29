@@ -40,16 +40,17 @@ can fill it in for you.
 Customers can also register at `/signup`. Drivers and admins cannot: an admin creates driver
 accounts under **Admin › Drivers**.
 
-The demo data is generated relative to today, so there are always trips for the past week and the
-next two weeks. It is stored in the browser (`localStorage`), is refreshed automatically each day,
+The demo data is generated relative to today: eight repeating Mon–Sat schedules run from the past
+week to two weeks ahead, so there are always trips to look at. Sundays and holidays have none. It is stored in the browser (`localStorage`), is refreshed automatically each day,
 and can be restored at any time with **Reset demo data** (admin sidebar or any sign-in page).
 
 Useful things in the seed:
 
-- Today's 7:00 AM Shakthan Stand → SmartCity trip on Bus 2 has 18 of 40 seats booked, with each
-  passenger's pickup and drop along the corridor (e.g. Chalakudy → Kakkanad).
-- The next operating day's 9:00 AM trip on Bus 4 is full.
-- The next fixed public holiday (for example 2 October) has no service.
+- The 7:00 AM Shakthan Stand → SmartCity trip on Bus 2 has 18 of 40 seats booked on the first day
+  with service (today, unless today is a Sunday or holiday), with each passenger's pickup and drop
+  along the corridor (e.g. Chalakudy → Kakkanad).
+- The next day's 9:00 AM trip on Bus 4 is full.
+- Every Sunday, and the next fixed public holiday (for example 2 October), has no service.
 - Bus 5 and driver Shaji Paul have no trips, so they can be disabled.
 - "Test Test" is a fake-looking customer sign-up to try **Admin › Users › Disable** on.
 
@@ -59,7 +60,7 @@ Useful things in the seed:
 |---|---|---|
 | Customer | `/`, `/book/[tripId]`, `/customer`, `/customer/bookings/[bookingId]` | Pick a date and a bus (Bus 1, Bus 2, …), type where you'll board and get off, book a seat, view and cancel bookings |
 | Driver | `/driver`, `/driver/trips/[tripId]` | See assigned trips and passengers, call a passenger, start and complete a trip |
-| Admin | `/admin`, `/admin/bookings`, `/admin/trips`, `/admin/buses`, `/admin/drivers`, `/admin/users`, `/admin/holidays` | Dashboard, manage buses (each with its route), drivers, trips, holidays and customer accounts; view and cancel bookings |
+| Admin | `/admin`, `/admin/bookings`, `/admin/trips`, `/admin/buses`, `/admin/drivers`, `/admin/users`, `/admin/holidays` | Dashboard; add buses and drivers; create one-time or repeating trips by picking a bus, driver, route and times; manage holidays and customer accounts; view and cancel bookings |
 
 Out of scope by design: payments, seat maps and seat selection, QR codes, maps and tracking, chat,
 ratings, coupons and marketing pages.
@@ -127,18 +128,25 @@ mock-only tooling and can be removed.
 - Customers search by date and choose a bus trip. Pickup and drop points are typed in, because
   passengers board and get off anywhere along the route; they are stored on the booking and shown
   on the driver's passenger list. They are not checked against a stop list.
-- Booking closes at departure. A trip cannot be booked when it is full, cancelled, departed or on
-  a holiday. The same passenger mobile cannot be booked twice on one trip.
+- Booking closes at departure. A trip cannot be booked when it is full, cancelled or departed. The
+  same passenger mobile cannot be booked twice on one trip.
 - Booking IDs are `EXC-DDMMYY-NNN`: the trip date plus a running number for that date.
 - Customers can cancel their own booking until departure. Admins can cancel any confirmed booking.
-- Each bus runs one fixed route, in both directions. A trip is a bus, a direction, a date, a time
-  and a driver. A bus's stops are locked once it has trips.
+- **Sundays are holidays.** No trips run on Sundays or on the holidays listed under Admin ›
+  Holidays. Customers searching a closed day see why, with a jump to the next day with service.
+- A bus is just a vehicle: name, registration, capacity and status. The route belongs to the trip.
+  A trip is a bus, a driver, a From → To route, a date, a departure time and an arrival time.
+- A trip is created once, or repeating: on chosen weekdays (Mon–Sat) from a start date until an
+  end date up to 90 days later. Sundays and holidays in that range are skipped, and the form
+  previews how many trips will be created before saving.
 - A bus or driver cannot be on two overlapping trips (running time plus a 15-minute turnaround).
-  Trips cannot be created in the past or on a holiday.
-- Once a trip has bookings, its date and direction are locked, and it can only move to a bus on
-  the same route with enough seats.
-- Cancelling a trip cancels its bookings. Adding a holiday cancels that day's trips and bookings
-  after a confirmation that shows the impact.
+  Trips cannot be created in the past, on a Sunday or on a holiday. If a repeating trip clashes on
+  any date, nothing is created and the clashing dates are listed.
+- Editing changes one trip, even when it came from a repeating schedule. Once a trip has bookings,
+  its date and route are locked, and it can only move to a bus with enough seats.
+- Cancelling a trip cancels its bookings. For a repeating trip, the admin can cancel just that trip
+  or that trip and every later scheduled one in the series. Adding a holiday cancels that day's
+  trips and bookings after a confirmation that shows the impact.
 - A bus or driver with upcoming trips cannot be disabled until those trips are reassigned or
   cancelled.
 - Disabling a customer signs them out, blocks sign-in and cancels their upcoming bookings.
@@ -173,9 +181,9 @@ results do not depend on the time of day.
 | Spec | Covers | Viewports |
 |---|---|---|
 | `smoke.spec.ts` | Every route renders its heading with no horizontal scrolling | 375, 390, 430, 1280, 1440 |
-| `customer.spec.ts` | Bus search, typed pickup/drop, sign-in redirect, booking, cancelling, sign-up | 390, 1440 |
+| `customer.spec.ts` | Bus search, typed pickup/drop, Sunday and holiday closures, sign-in redirect, booking, cancelling, sign-up | 390, 1440 |
 | `driver.spec.ts` | Trip list, passengers, start and complete, access rules | 390, 1440 |
-| `admin.spec.ts` | Buses, drivers, trips, holidays, users, bookings, reset | 390, 1440 |
+| `admin.spec.ts` | Buses, drivers, one-time and repeating trips, series cancel, schedule conflicts, holidays, users, bookings, reset | 390, 1440 |
 | `responsive.spec.ts` | Mobile menus, cards instead of tables | 375, 390, 430 |
 
 ## Known limitations

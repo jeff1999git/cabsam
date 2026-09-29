@@ -1,4 +1,4 @@
-import { DAY_AFTER_TOMORROW, TODAY, TOMORROW, expect, openSecondDevice, test } from "./fixtures";
+import { DAY_AFTER_TOMORROW, SUNDAY, TODAY, TOMORROW, expect, openSecondDevice, test } from "./fixtures";
 import { ACCOUNTS, TEST_CUSTOMER, expectSignInRefused, signIn, submitSignIn } from "./helpers/auth";
 import {
   confirmAction,
@@ -42,16 +42,16 @@ test.describe("admin", () => {
       await expect(page.getByRole("heading", { level: 1, name: "Buses" })).toBeVisible();
     });
 
-    test("add a bus, then edit its capacity", async ({ page }) => {
+    test("add a bus (no route), then edit its capacity", async ({ page }) => {
+      await expect(page.getByRole("columnheader", { name: "Route" })).toHaveCount(0);
       await page.getByRole("button", { name: "Add Bus" }).click();
       const dialog = page.getByRole("dialog", { name: "Add bus" });
       await expect(dialog).toBeVisible();
-      await dialog.getByLabel("Bus Name").fill("Bus 7");
+      // The next free "Bus N" is suggested; buses carry no route or duration.
+      await expect(dialog.getByLabel("Bus Name")).toHaveValue("Bus 7");
+      await expect(dialog.getByLabel("From", { exact: true })).toHaveCount(0);
       await dialog.getByLabel("Registration Number").fill("kl-08-zz-1111");
       await expect(dialog.getByLabel("Registration Number")).toHaveValue("KL-08-ZZ-1111");
-      await dialog.getByLabel("From", { exact: true }).fill("Kodungallur");
-      await dialog.getByLabel("To", { exact: true }).fill("SmartCity");
-      await dialog.getByLabel("Est. duration (minutes)").fill("75");
       await dialog.getByLabel("Capacity", { exact: true }).fill("30");
       await dialog.getByRole("button", { name: "Add bus", exact: true }).click();
       await expectToast(page, "Bus 7 added");
@@ -59,7 +59,7 @@ test.describe("admin", () => {
 
       const row = listRow(page, "Bus 7");
       await expect(row).toHaveCount(1);
-      for (const text of ["KL-08-ZZ-1111", "Kodungallur", "SmartCity", "1h 15m", "30 seats"]) {
+      for (const text of ["KL-08-ZZ-1111", "30 seats"]) {
         await expect(row).toContainText(text);
       }
       await expect(row.getByText("Active", { exact: true })).toBeVisible();
@@ -159,22 +159,23 @@ test.describe("admin", () => {
   });
 
   test.describe("trips", () => {
-    test("create a trip for tomorrow, then move its departure time", async ({ page }) => {
+    test("create a one-time trip for tomorrow, then move its departure time", async ({ page }) => {
       await page.goto("/admin/trips");
       await expect(page.getByRole("heading", { level: 1, name: "Trips" })).toBeVisible();
       await page.getByRole("button", { name: "Create Trip" }).click();
       const dialog = page.getByRole("dialog", { name: "Create trip" });
       await expect(dialog).toBeVisible();
-      await dialog.getByLabel("Date", { exact: true }).fill(TOMORROW);
-      await dialog.getByLabel("Time", { exact: true }).fill("10:00");
       const bus = dialog.getByLabel("Bus", { exact: true });
       await expect(bus).toBeEnabled();
       await selectOptionContaining(bus, "Bus 5");
-      const outbound = dialog.getByRole("button", { name: /^Outbound/ });
-      await expect(outbound).toHaveAccessibleName(/Guruvayur → Shakthan Stand/);
-      await outbound.click();
-      await expect(outbound).toHaveAttribute("aria-pressed", "true");
       await dialog.getByLabel("Driver", { exact: true }).selectOption({ label: "Shaji Paul" });
+      await dialog.getByLabel("From", { exact: true }).fill("Guruvayur");
+      await dialog.getByLabel("To", { exact: true }).fill("Shakthan Stand");
+      await dialog.getByLabel("Departure time").fill("10:00");
+      await dialog.getByLabel("Arrival time").fill("11:30");
+      await expect(dialog.getByRole("button", { name: "One-time" })).toHaveAttribute("aria-pressed", "true");
+      await dialog.getByLabel("Date", { exact: true }).fill(TOMORROW);
+      await expect(dialog.getByRole("status").filter({ hasText: "Creates 1 trip" })).toBeVisible();
       await dialog.getByRole("button", { name: "Create trip", exact: true }).click();
       await expectToast(page, "Trip created");
       await expect(dialog).toBeHidden();
@@ -182,19 +183,22 @@ test.describe("admin", () => {
       const row = listRow(page, "Bus 5");
       await expect(row).toHaveCount(1);
       await expect(row).toContainText("10:00");
+      await expect(row).toContainText("11:30");
       await expect(row).toContainText("KL-07-DA-1186");
       await expect(row).toContainText("Guruvayur");
       await expect(row).toContainText("Shakthan Stand");
       await expect(row).toContainText("Shaji Paul");
       await expect(row).toContainText("0 / 17");
+      await expect(row).not.toContainText("Repeats");
       await expect(row.getByText("Upcoming", { exact: true })).toBeVisible();
 
       await row.getByRole("button", { name: "Edit", exact: true }).click();
       const edit = page.getByRole("dialog", { name: "Edit trip" });
       await expect(edit).toBeVisible();
-      const time = edit.getByLabel("Time", { exact: true });
+      const time = edit.getByLabel("Departure time");
       await expect(time).toHaveValue("10:00");
       await expect(edit.getByLabel("Date", { exact: true })).toHaveValue(TOMORROW);
+      await expect(edit.getByRole("button", { name: "Repeating" })).toHaveCount(0);
       await time.fill("10:30");
       await edit.getByRole("button", { name: "Save changes" }).click();
       await expectToast(page, "Trip updated");
@@ -206,6 +210,78 @@ test.describe("admin", () => {
       await expect(page.getByRole("heading", { level: 1, name: "Trips" })).toBeVisible();
       await expect(listRow(page, "Bus 5")).toContainText("10:30");
       await expect(listRow(page, "Bus 5")).toContainText("Shaji Paul");
+    });
+
+    test("a repeating trip skips Sundays and holidays, and its later trips cancel together", async ({ page }) => {
+      await page.goto("/admin/trips");
+      await expect(page.getByRole("heading", { level: 1, name: "Trips" })).toBeVisible();
+      await page.getByRole("button", { name: "Create Trip" }).click();
+      const dialog = page.getByRole("dialog", { name: "Create trip" });
+      await expect(dialog).toBeVisible();
+      await selectOptionContaining(dialog.getByLabel("Bus", { exact: true }), "Bus 5");
+      await dialog.getByLabel("Driver", { exact: true }).selectOption({ label: "Shaji Paul" });
+      await dialog.getByLabel("From", { exact: true }).fill("Guruvayur");
+      await dialog.getByLabel("To", { exact: true }).fill("Infopark");
+      await dialog.getByLabel("Departure time").fill("14:00");
+      await dialog.getByLabel("Arrival time").fill("15:30");
+      await dialog.getByRole("button", { name: "Repeating" }).click();
+      await dialog.getByLabel("Start date").fill(TOMORROW);
+      await dialog.getByLabel("Repeat until").fill("2026-10-17");
+      // Mon–Sat by default; Sunday can't be picked.
+      for (const day of ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]) {
+        await expect(dialog.getByRole("button", { name: day, exact: true })).toHaveAttribute("aria-pressed", "true");
+      }
+      await expect(dialog.getByRole("button", { name: "Sun", exact: true })).toBeDisabled();
+      // 29 Sep – 17 Oct, Mon–Sat, without Sun 4 / 11 Oct (never weekdays) and Gandhi Jayanti.
+      await expect(dialog.getByRole("status").filter({ hasText: "Creates 16 trips" })).toContainText(
+        "skips Fri, 2 Oct (Gandhi Jayanti)",
+      );
+      await dialog.getByRole("button", { name: "Create trip", exact: true }).click();
+      await expectToast(page, "16 trips created");
+      await expect(dialog).toBeHidden();
+
+      await page.goto(`/admin/trips?date=${TOMORROW}`);
+      await expect(page.getByRole("heading", { level: 1, name: "Trips" })).toBeVisible();
+      const row = listRow(page, "Bus 5");
+      await expect(row).toHaveCount(1);
+      await expect(row).toContainText("Repeats");
+      await expect(row).toContainText("Guruvayur");
+
+      await row.getByRole("button", { name: "Cancel", exact: true }).click();
+      const confirm = page.getByRole("alertdialog");
+      await expect(confirm).toBeVisible();
+      await confirm.getByRole("radio", { name: "This and later trips in the series (16 trips)" }).check();
+      await confirmAction(page, {
+        title: /^Cancel the 2:00 PM Guruvayur → Infopark trip on 29 Sep\?$/,
+        text: "Every confirmed booking on these trips will be cancelled",
+        confirm: "Cancel trips",
+      });
+      await expectToast(page, "16 trips cancelled");
+      await expect(row.getByText("Cancelled", { exact: true })).toBeVisible();
+
+      await page.goto("/admin/trips?date=2026-10-17");
+      await expect(page.getByRole("heading", { level: 1, name: "Trips" })).toBeVisible();
+      await expect(listRow(page, "Bus 5").getByText("Cancelled", { exact: true })).toBeVisible();
+    });
+
+    test("a repeating trip that clashes with the schedule creates nothing", async ({ page }) => {
+      await page.goto("/admin/trips?create=1");
+      const dialog = page.getByRole("dialog", { name: "Create trip" });
+      await expect(dialog).toBeVisible();
+      await selectOptionContaining(dialog.getByLabel("Bus", { exact: true }), "Bus 2");
+      await dialog.getByLabel("Driver", { exact: true }).selectOption({ label: "Shaji Paul" });
+      await dialog.getByLabel("From", { exact: true }).fill("Shakthan Stand");
+      await dialog.getByLabel("To", { exact: true }).fill("SmartCity");
+      await dialog.getByLabel("Departure time").fill("07:30");
+      await dialog.getByLabel("Arrival time").fill("09:00");
+      await dialog.getByRole("button", { name: "Repeating" }).click();
+      await dialog.getByLabel("Start date").fill(TOMORROW);
+      await expect(dialog.getByRole("status").filter({ hasText: /Creates \d+ trips/ })).toBeVisible();
+      await dialog.getByRole("button", { name: "Create trip", exact: true }).click();
+      const alert = dialog.getByRole("alert").filter({ hasText: "Schedule conflict" });
+      await expect(alert).toContainText("no trips were created");
+      await expect(alert).toContainText(/Bus 2 is busy on 29 Sep/);
+      await expect(dialog).toBeVisible();
     });
 
     test("cancelling a booked trip cancels its bookings", async ({ page }) => {
@@ -230,11 +306,17 @@ test.describe("admin", () => {
   test("holidays: add one on a day with trips, then delete it", async ({ page }) => {
     await page.goto("/admin/holidays");
     await expect(page.getByRole("heading", { level: 1, name: "Holidays" })).toBeVisible();
+    await expect(page.getByText("Every Sunday is a holiday — no trips run on Sundays.")).toBeVisible();
     await expect(page.getByRole("listitem").filter({ hasText: "Gandhi Jayanti" })).toBeVisible();
 
     await page.getByRole("button", { name: "Add Holiday" }).click();
     const dialog = page.getByRole("dialog", { name: "Add holiday" });
     await expect(dialog).toBeVisible();
+    // Sundays are holidays already.
+    await dialog.getByLabel("Date", { exact: true }).fill(SUNDAY);
+    await dialog.getByLabel("Reason").fill("Local strike");
+    await dialog.getByRole("button", { name: "Add holiday", exact: true }).click();
+    await expect(dialog.getByText("Sundays are already holidays")).toBeVisible();
     await dialog.getByLabel("Date", { exact: true }).fill(DAY_AFTER_TOMORROW);
     await dialog.getByLabel("Reason").fill("Local strike");
     await expect(dialog).toContainText(/\d+ trips and \d+ bookings on Wed, 30 Sep 2026 will be cancelled/);

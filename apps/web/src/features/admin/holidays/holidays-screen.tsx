@@ -1,6 +1,7 @@
 "use client";
 
 import type { Holiday, ISODate } from "@excelcabs/types";
+import { Alert, AlertDescription, AlertTitle } from "@excelcabs/ui/components/alert";
 import { Button } from "@excelcabs/ui/components/button";
 import { Skeleton } from "@excelcabs/ui/components/skeleton";
 import { toast } from "@excelcabs/ui/components/sonner";
@@ -186,6 +187,12 @@ export function AdminHolidaysScreen() {
         description="Days the shuttle does not run. Adding one cancels that day's trips."
         actions={addButton}
       />
+
+      <Alert variant="info">
+        <CalendarOff />
+        <AlertTitle>Every Sunday is a holiday — no trips run on Sundays.</AlertTitle>
+        <AlertDescription>List the other days the shuttle does not run here.</AlertDescription>
+      </Alert>
 
       {content}
 

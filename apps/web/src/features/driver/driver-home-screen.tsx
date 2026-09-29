@@ -6,13 +6,13 @@ import { EmptyState } from "@excelcabs/ui/composites/empty-state";
 import { StatusBadge } from "@excelcabs/ui/composites/status-badge";
 import { eyebrowClassName } from "@excelcabs/ui/lib/styles";
 import type { UseQueryResult } from "@tanstack/react-query";
-import { BusFront, CalendarDays, RotateCcw } from "lucide-react";
+import { BusFront, CalendarDays, CalendarOff, RotateCcw } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
 
 import { QueryError } from "@/components/common/query-error";
 import { addDays, diffDays, formatDateLong, formatWeekdayDate, today } from "@/lib/datetime";
 import { pluralize } from "@/lib/format";
-import { useMyTrips } from "@/queries/trips";
+import { useMyTrips, useTripSearch } from "@/queries/trips";
 
 import { TripCard, TripCardSkeleton } from "./trip-card";
 
@@ -73,6 +73,43 @@ function TripList({ query, empty, children }: TripListProps) {
   return <>{children(query.data)}</>;
 }
 
+interface NoTripsTodayProps {
+  date: ISODate;
+  refreshing: boolean;
+  onRefresh: () => void;
+}
+
+/** Today's empty state: "No service today" on a Sunday or holiday, otherwise nothing assigned yet. */
+function NoTripsToday({ date, refreshing, onRefresh }: NoTripsTodayProps) {
+  const closure = useTripSearch(date).data?.closure;
+  if (closure) {
+    return (
+      <EmptyState
+        icon={<CalendarOff />}
+        title="No service today"
+        description={
+          closure.reason === "sunday"
+            ? "Every Sunday is a holiday, so no trips run today."
+            : `Today is a holiday (${closure.holiday.reason}), so no trips run.`
+        }
+      />
+    );
+  }
+  return (
+    <EmptyState
+      icon={<BusFront />}
+      title="No trips assigned today"
+      description="Trips the office assigns to you for today will show up here."
+      action={
+        <Button variant="soft" loading={refreshing} onClick={onRefresh}>
+          <RotateCcw />
+          Refresh
+        </Button>
+      }
+    />
+  );
+}
+
 /** `/driver`: today's assigned trips (in-progress pinned first) and the next few days. */
 export function DriverHomeScreen() {
   const [todayDate] = useState(today);
@@ -105,20 +142,10 @@ export function DriverHomeScreen() {
         <TripList
           query={todayTrips}
           empty={
-            <EmptyState
-              icon={<BusFront />}
-              title="No trips assigned today"
-              description="Trips the office assigns to you for today will show up here."
-              action={
-                <Button
-                  variant="soft"
-                  loading={todayTrips.isFetching}
-                  onClick={() => void todayTrips.refetch()}
-                >
-                  <RotateCcw />
-                  Refresh
-                </Button>
-              }
+            <NoTripsToday
+              date={todayDate}
+              refreshing={todayTrips.isFetching}
+              onRefresh={() => void todayTrips.refetch()}
             />
           }
         >

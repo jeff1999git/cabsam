@@ -3,6 +3,7 @@ import type {
   ISODate,
   MyTripsQuery,
   TripListQuery,
+  TripScheduleInput,
   UpdateTripInput,
 } from "@excelcabs/types";
 import { keepPreviousData, skipToken, useMutation, useQuery } from "@tanstack/react-query";
@@ -12,7 +13,10 @@ import { tripService } from "@/services/trip.service";
 import { LIVE_REFETCH_INTERVAL_MS } from "./client";
 import { type QueryDomain, queryKeys } from "./keys";
 
-/** Trip writes change seat counts, schedules and the usage counts of buses and drivers. */
+/**
+ * Trip writes (one trip or a whole series) change seat counts, schedules and the usage counts of
+ * buses and drivers.
+ */
 const TRIP_WRITE_INVALIDATES = [
   "trips",
   "bookings",
@@ -24,9 +28,9 @@ const TRIP_WRITE_INVALIDATES = [
 const TRIP_STATUS_INVALIDATES = ["trips", "bookings", "dashboard"] as const satisfies readonly QueryDomain[];
 
 /**
- * Public: every trip on `date` (all buses, both directions). Pass `null` until the date is known.
- * Keeps showing the previous results while a new date loads (`isPlaceholderData`), and refreshes
- * seat counts every minute.
+ * Public: every trip on `date` (all buses), or `closure` (Sunday / holiday) with no trips. Pass
+ * `null` until the date is known. Keeps showing the previous results while a new date loads
+ * (`isPlaceholderData`), and refreshes seat counts every minute.
  */
 export function useTripSearch(date: ISODate | null) {
   return useQuery({
@@ -34,6 +38,39 @@ export function useTripSearch(date: ISODate | null) {
     queryFn: date ? () => tripService.search({ date }) : skipToken,
     placeholderData: keepPreviousData,
     refetchInterval: LIVE_REFETCH_INTERVAL_MS,
+  });
+}
+
+/**
+ * Public: the first day with service (Mon–Sat, not a holiday) on or after `from` — omitted or
+ * earlier than today means today. The home page's default date; "Check next day" on a closed date
+ * passes that date.
+ */
+export function useNextOperatingDay(from?: ISODate) {
+  return useQuery({
+    queryKey: queryKeys.trips.nextOperatingDay(from ?? null),
+    queryFn: () => tripService.nextOperatingDay(from),
+  });
+}
+
+/** Sorted, de-duplicated weekdays, so equal schedules share one cache entry and request. */
+function normalizeSchedule({ date, repeat }: TripScheduleInput): TripScheduleInput {
+  if (!repeat) return { date };
+  const weekdays = [...new Set(repeat.weekdays)].toSorted((a, b) => a - b);
+  return { date, repeat: { weekdays, until: repeat.until } };
+}
+
+/**
+ * Admin: the dates the trip form's schedule would create and skip ("Creates 22 trips · skips
+ * Fri 2 Oct (Gandhi Jayanti)"). Pass `toTripScheduleInput(values)` (null while incomplete), debounced;
+ * render the preview only while that is non-null. Keeps the previous preview while the next loads.
+ */
+export function usePreviewSchedule(input: TripScheduleInput | null) {
+  const schedule = input && normalizeSchedule(input);
+  return useQuery({
+    queryKey: queryKeys.trips.schedulePreview(schedule),
+    queryFn: schedule ? () => tripService.previewSchedule(schedule) : skipToken,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -54,7 +91,7 @@ export function useTrips(query?: TripListQuery) {
   });
 }
 
-/** Admin: one trip with `permissions` (edit / cancel, locked fields). */
+/** Admin: one trip with `permissions` (edit / cancel, locked fields) and its `series`, if any. */
 export function useTrip(id: string | null | undefined) {
   return useQuery({
     queryKey: queryKeys.trips.detail(id ?? ""),
@@ -80,11 +117,12 @@ export function useMyTrips(query?: MyTripsQuery) {
   });
 }
 
+/**
+ * Admin: resolves to a `CreateTripResult` (`trips`, `series`, `skipped`). A clash on a repeating
+ * trip is CONFLICT(SCHEDULE_CONFLICT) with `details.conflicts`.
+ */
 export function useCreateTrip() {
-  return useMutation({
-    mutationFn: tripService.create,
-    meta: { invalidates: ["trips", "dashboard", "buses", "drivers"] },
-  });
+  return useMutation({ mutationFn: tripService.create, meta: { invalidates: TRIP_WRITE_INVALIDATES } });
 }
 
 export function useUpdateTrip() {
@@ -94,6 +132,10 @@ export function useUpdateTrip() {
   });
 }
 
+/**
+ * Admin: `mutate({ id, input: { reason, scope } })` — `scope: "series"` also cancels the series'
+ * later scheduled trips. Resolves to `{ trip, cancelledTrips, cancelledBookings }`.
+ */
 export function useCancelTrip() {
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input?: CancelTripInput }) => tripService.cancel(id, input),

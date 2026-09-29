@@ -15,7 +15,7 @@
  * 6. `<input type="date">` yields '' or 'YYYY-MM-DD'; `<input type="time">` yields 24h 'HH:mm'.
  * 7. `today()` is impure: compute time-dependent flags in services, not during render.
  */
-import type { ISODate, ISODateTime, TimeHM } from "@excelcabs/types";
+import type { ISODate, ISODateTime, TimeHM, Weekday } from "@excelcabs/types";
 
 const IST_OFFSET_MINUTES = 330;
 
@@ -28,8 +28,6 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
-
-export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 export interface IstNow {
   date: ISODate;
@@ -166,6 +164,31 @@ export function hasDeparted(
 export function formatDayMonth(date: ISODate): string {
   const { month, day } = parseDate(date);
   return `${day} ${nameAt(MONTHS, month - 1)}`;
+}
+
+/** 'Mon' */
+export function formatWeekday(day: Weekday): string {
+  return nameAt(WEEKDAYS, day);
+}
+
+/**
+ * 'Mon–Sat' for three or more consecutive days, otherwise 'Mon, Wed, Fri'. Expects the days sorted
+ * and unique, as a series stores them.
+ */
+export function formatWeekdays(days: readonly Weekday[]): string {
+  const [first] = days;
+  const last = days.at(-1);
+  const isRun =
+    first !== undefined && last !== undefined && days.length >= 3 && last - first === days.length - 1;
+  return isRun ? `${formatWeekday(first)}–${formatWeekday(last)}` : days.map(formatWeekday).join(", ");
+}
+
+/** '21 Sep – 12 Oct 2026' (the year once, from the end date; both years when they differ). */
+export function formatDateRange(from: ISODate, to: ISODate): string {
+  const fromYear = parseDate(from).year;
+  const toYear = parseDate(to).year;
+  const start = fromYear === toYear ? formatDayMonth(from) : `${formatDayMonth(from)} ${fromYear}`;
+  return `${start} – ${formatDayMonth(to)} ${toYear}`;
 }
 
 /** 'Thu, 24 Sep' */

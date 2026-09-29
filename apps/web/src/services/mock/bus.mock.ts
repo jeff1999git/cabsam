@@ -6,10 +6,9 @@ import { nowIso, today } from "@/lib/datetime";
 import type { MockDb } from "@/lib/mock/db";
 import { pluralize } from "@/lib/format";
 import { busInputSchema, busUpdateSchema } from "@/lib/schemas/bus";
-import { isSameStop } from "@/lib/schemas/common";
 
 import type { BusService } from "../bus.service";
-import { conflict, notFound, validation } from "../errors";
+import { conflict, notFound } from "../errors";
 import { requireUser } from "./_session";
 import { mockRead, mockWrite, newId, parseInput } from "./_utils";
 import { toBusWithUsage, usageIndex } from "./_views";
@@ -77,17 +76,9 @@ export const mockBusService: BusService = {
       const changes = parseInput(busUpdateSchema, patch);
       const bus = findBus(draft, id);
       const next = { ...bus, ...changes };
-      if (isSameStop(next.origin, next.destination)) {
-        throw validation({ destination: "Destination must differ from the origin" });
-      }
       assertUnique(draft, next, bus.id);
 
       const usage = toBusWithUsage(usageIndex(draft, today()), bus);
-      const routeChanged = next.origin !== bus.origin || next.destination !== bus.destination;
-      if (routeChanged && usage.totalTripCount > 0) {
-        const message = `${bus.name} already has trips, so its route can't change. Add a new bus instead.`;
-        throw conflict("BUS_ROUTE_LOCKED", message, { fieldErrors: { origin: message } });
-      }
       if (next.capacity < usage.maxBookedOnUpcomingTrip) {
         const message = `An upcoming trip already has ${pluralize(usage.maxBookedOnUpcomingTrip, "booking")}`;
         throw conflict("CAPACITY_BELOW_BOOKINGS", message, { fieldErrors: { capacity: message } });

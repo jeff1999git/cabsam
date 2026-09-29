@@ -17,6 +17,8 @@ import type {
   Trip,
   TripDetails,
   TripSearchItem,
+  TripSeries,
+  TripSeriesSummary,
   TripSummary,
   TripWithPassengers,
   User,
@@ -28,7 +30,8 @@ import type { MockDb } from "@/lib/mock/db";
 import {
   bookedSeatsByTrip,
   bookingCancelBlocker,
-  routeEndpoints,
+  closureOf,
+  seriesCancelTargets,
   tripBookability,
   tripPermissions,
   upcomingTrips,
@@ -40,6 +43,7 @@ export interface DbIndex {
   buses: ReadonlyMap<string, Bus>;
   users: ReadonlyMap<string, User>;
   trips: ReadonlyMap<string, Trip>;
+  series: ReadonlyMap<string, TripSeries>;
   holidays: ReadonlyMap<ISODate, Holiday>;
   /** Non-cancelled bookings per trip. */
   bookedSeats: ReadonlyMap<string, number>;
@@ -51,6 +55,7 @@ export function indexDb(db: Readonly<MockDb>): DbIndex {
     buses: new Map(db.buses.map((bus) => [bus.id, bus])),
     users: new Map(db.users.map((user) => [user.id, user])),
     trips: new Map(db.trips.map((trip) => [trip.id, trip])),
+    series: new Map(db.series.map((series) => [series.id, series])),
     holidays: new Map(db.holidays.map((holiday) => [holiday.date, holiday])),
     bookedSeats: bookedSeatsByTrip(db.bookings),
   };
@@ -76,8 +81,8 @@ export function toTripSummary(index: DbIndex, trip: Trip): TripSummary {
     arrivalTime: addMinutes(trip.departureTime, trip.durationMinutes).time,
     durationMinutes: trip.durationMinutes,
     status: trip.status,
-    route: routeEndpoints(bus, trip.direction),
-    direction: trip.direction,
+    route: { origin: trip.origin, destination: trip.destination },
+    seriesId: trip.seriesId,
     bus: { id: bus.id, name: bus.name, registrationNumber: bus.registrationNumber, capacity: bus.capacity },
     driver: { id: driver.id, name: driver.name, mobile: driver.mobile },
     capacity: bus.capacity,
@@ -91,10 +96,23 @@ export function toTripSearchItem(index: DbIndex, trip: Trip, now: IstNow): TripS
   return {
     ...summary,
     bookability: tripBookability(trip, {
-      holiday: index.holidays.get(trip.date),
+      closure: closureOf(trip.date, index.holidays.get(trip.date)),
       availableSeats: summary.availableSeats,
       now,
     }),
+  };
+}
+
+function toTripSeriesSummary(index: DbIndex, trip: Trip, today: ISODate): TripSeriesSummary | null {
+  const series = trip.seriesId === null ? undefined : index.series.get(trip.seriesId);
+  if (!series) return null;
+  return {
+    id: series.id,
+    weekdays: series.weekdays,
+    startDate: series.startDate,
+    endDate: series.endDate,
+    upcomingTripCount: upcomingTrips(index.db, today).filter((other) => other.seriesId === series.id).length,
+    remainingTripCount: seriesCancelTargets(index.db, trip).length,
   };
 }
 
@@ -114,6 +132,7 @@ export function toTripDetails(
     createdAt: trip.createdAt,
     updatedAt: trip.updatedAt,
     permissions: tripPermissions(index.db, trip, viewer, item.bookedSeats, now),
+    series: toTripSeriesSummary(index, trip, now.date),
   };
 }
 
@@ -155,13 +174,12 @@ export function toBookingDetails(
 
 /** Trip usage of buses and drivers, computed once per call. */
 interface UsageIndex {
-  db: Readonly<MockDb>;
   upcoming: readonly Trip[];
   bookedSeats: ReadonlyMap<string, number>;
 }
 
 export function usageIndex(db: Readonly<MockDb>, today: ISODate): UsageIndex {
-  return { db, upcoming: upcomingTrips(db, today), bookedSeats: bookedSeatsByTrip(db.bookings) };
+  return { upcoming: upcomingTrips(db, today), bookedSeats: bookedSeatsByTrip(db.bookings) };
 }
 
 export function toBusWithUsage(usage: UsageIndex, bus: Bus): BusWithUsage {
@@ -170,7 +188,6 @@ export function toBusWithUsage(usage: UsageIndex, bus: Bus): BusWithUsage {
     ...bus,
     upcomingTripCount: trips.length,
     maxBookedOnUpcomingTrip: Math.max(0, ...trips.map((trip) => usage.bookedSeats.get(trip.id) ?? 0)),
-    totalTripCount: usage.db.trips.filter((trip) => trip.busId === bus.id).length,
   };
 }
 

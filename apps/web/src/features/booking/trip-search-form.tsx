@@ -43,7 +43,8 @@ const TRIP_PLACEHOLDER = {
 } as const;
 
 interface TripSearchFormBaseProps {
-  date: ISODate;
+  /** `null` while the default date is still being worked out. */
+  date: ISODate | null;
   /** Earliest selectable date (today). */
   minDate: ISODate;
   onDateChange: (date: ISODate) => void;
@@ -139,7 +140,7 @@ export function TripSearchForm(props: TripSearchFormProps) {
               type="date"
               icon={<CalendarDays />}
               min={minDate}
-              value={date}
+              value={date ?? ""}
               onChange={(event) => changeDate(event.target.value)}
               className={TALL_INPUT}
             />

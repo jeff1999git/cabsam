@@ -5,32 +5,55 @@ import {
   type Bus,
   type FieldErrors,
   type ISODate,
+  type ScheduleConflict,
   type ServiceErrorReason,
   type TimeHM,
   type Trip,
   TRIP_EDITABLE_FIELDS,
+  type TripSeries,
   type TripSummary,
+  type UpdateTripInput,
 } from "@excelcabs/types";
+import { z } from "zod";
 
 import { TURNAROUND_MINUTES } from "@/config/business";
-import { addMinutes, formatDayMonth, formatTime, type IstNow, nowIso, nowIst } from "@/lib/datetime";
+import {
+  addMinutes,
+  dayOfWeek,
+  formatDateRange,
+  formatDayMonth,
+  formatTime,
+  formatWeekdays,
+  type IstNow,
+  nowIso,
+  nowIst,
+} from "@/lib/datetime";
 import { formatRoute, pluralize } from "@/lib/format";
 import type { MockDb } from "@/lib/mock/db";
+import { isoDateField, isSameStop } from "@/lib/schemas/common";
 import { tripSearchInputSchema } from "@/lib/schemas/search";
-import { cancelTripSchema, tripInputSchema, tripUpdateSchema } from "@/lib/schemas/trip";
+import {
+  cancelTripSchema,
+  SUNDAY_NO_TRIPS_MESSAGE,
+  tripInputSchema,
+  tripScheduleInputSchema,
+  tripUpdateSchema,
+} from "@/lib/schemas/trip";
 
-import { conflict, notFound, validation } from "../errors";
+import { conflict, notFound, type ServiceError, validation } from "../errors";
 import type { TripService } from "../trip.service";
 import {
+  type Cancellation,
   cancelTripWithBookings,
+  closureOn,
   countBookedSeats,
   endsAfterMidnight,
   findScheduleConflicts,
-  holidayOn,
   invalidTransition,
-  isSameRoute,
   lockedFieldsChanged,
-  routeEndpoints,
+  nextOperatingDay,
+  scheduleDates,
+  seriesCancelTargets,
   type TripSlot,
   tripStartBlocker,
 } from "./_rules";
@@ -45,6 +68,11 @@ import {
 } from "./_views";
 
 const TRIP_CANCELLED_REASON = "Trip cancelled by operator";
+const EMPTY_SCHEDULE_MESSAGE = "No trip dates in this range — pick more days or a later end date";
+/** Dates named in a SCHEDULE_CONFLICT message before "and N more dates". */
+const LISTED_CONFLICT_DATES = 3;
+
+const nextOperatingDayQuerySchema = z.object({ from: isoDateField.optional() });
 
 function byDeparture(a: Trip, b: Trip): number {
   return a.date.localeCompare(b.date) || a.departureTime.localeCompare(b.departureTime);
@@ -71,7 +99,7 @@ function findOwnTrip(db: Readonly<MockDb>, id: string, driverId: string): Trip {
   return trip;
 }
 
-function fieldError(field: string, message: string, reason: ServiceErrorReason) {
+function fieldError(field: string, message: string, reason?: ServiceErrorReason) {
   return validation({ [field]: message }, message, reason);
 }
 
@@ -89,18 +117,38 @@ function assertActiveDriver(db: Readonly<MockDb>, id: string): void {
   throw fieldError("driverId", message, "RESOURCE_INACTIVE");
 }
 
-function assertNotPast(date: ISODate, departureTime: TimeHM, now: IstNow): void {
+function assertNotPastDate(date: ISODate, now: IstNow): void {
   if (date < now.date) throw fieldError("date", "Date cannot be in the past", "PAST_DATE");
+}
+
+function assertNotPast(date: ISODate, departureTime: TimeHM, now: IstNow): void {
+  assertNotPastDate(date, now);
   if (date === now.date && departureTime <= now.time) {
     throw fieldError("departureTime", "This time has already passed", "PAST_DATE");
   }
 }
 
-function assertNotHoliday(db: Readonly<MockDb>, date: ISODate): void {
-  const holiday = holidayOn(db, date);
-  if (holiday) {
-    throw fieldError("date", `${formatDayMonth(date)} is a holiday (${holiday.reason})`, "TRIP_ON_HOLIDAY");
+/** Trips only run on operating days: never on a Sunday or a holiday. */
+function assertOperatingDay(db: Readonly<MockDb>, date: ISODate): void {
+  const closure = closureOn(db, date);
+  if (closure?.reason === "sunday") throw fieldError("date", SUNDAY_NO_TRIPS_MESSAGE, "NON_OPERATING_DAY");
+  if (closure?.reason === "holiday") {
+    const message = `${formatDayMonth(date)} is a holiday (${closure.holiday.reason})`;
+    throw fieldError("date", message, "TRIP_ON_HOLIDAY");
   }
+}
+
+/** A series trip may move to another date only if its series runs on that date. */
+function assertWithinSeries(db: Readonly<MockDb>, trip: Trip): void {
+  const series = db.series.find((candidate) => candidate.id === trip.seriesId);
+  if (!series) return;
+  const fits =
+    trip.date >= series.startDate &&
+    trip.date <= series.endDate &&
+    series.weekdays.includes(dayOfWeek(trip.date));
+  if (fits) return;
+  const runs = `${formatWeekdays(series.weekdays)}, ${formatDateRange(series.startDate, series.endDate)}`;
+  throw fieldError("date", `This trip is part of a series (${runs}) — pick a date within it`);
 }
 
 function assertEndsSameDay(departureTime: TimeHM, durationMinutes: number): void {
@@ -136,21 +184,83 @@ function assertNoScheduleConflict(db: Readonly<MockDb>, slot: TripSlot, excludeT
   });
 }
 
+/** '6 Oct, 7 Oct, 8 Oct and 2 more dates' */
+function describeDates(dates: readonly ISODate[]): string {
+  const listed = dates.slice(0, LISTED_CONFLICT_DATES).map(formatDayMonth).join(", ");
+  const more = dates.length - LISTED_CONFLICT_DATES;
+  return more > 0 ? `${listed} and ${pluralize(more, "more date")}` : listed;
+}
+
+function scheduleConflict(conflicts: readonly ScheduleConflict[]): ServiceError {
+  const busClashes = conflicts.filter((clash) => clash.busy === "bus");
+  const driverClashes = conflicts.filter((clash) => clash.busy === "driver");
+  const fieldErrors: FieldErrors = {};
+  if (busClashes[0]) {
+    fieldErrors.busId = `${busClashes[0].trip.bus.name} is busy on ${describeDates(busClashes.map((clash) => clash.date))}`;
+  }
+  if (driverClashes[0]) {
+    fieldErrors.driverId = `${driverClashes[0].trip.driver.name} is busy on ${describeDates(driverClashes.map((clash) => clash.date))}`;
+  }
+  const message = fieldErrors.busId ?? fieldErrors.driverId ?? "Schedule conflict";
+  return conflict("SCHEDULE_CONFLICT", message, { fieldErrors, details: { conflicts } });
+}
+
+/**
+ * Adds a series' trips to the draft one by one, checking each against everything already there
+ * (earlier trips of the same series included). Any clash throws SCHEDULE_CONFLICT listing all of
+ * them, which discards the draft: nothing is written.
+ */
+function addSeriesTrips(draft: MockDb, trips: readonly Trip[]): void {
+  const index = indexDb(draft);
+  const conflicts: ScheduleConflict[] = [];
+  for (const trip of trips) {
+    const clashes = findScheduleConflicts(draft, trip);
+    if (clashes.bus) conflicts.push({ date: trip.date, busy: "bus", trip: toTripSummary(index, clashes.bus) });
+    if (clashes.driver) {
+      conflicts.push({ date: trip.date, busy: "driver", trip: toTripSummary(index, clashes.driver) });
+    }
+    draft.trips.push(trip);
+  }
+  if (conflicts.length > 0) throw scheduleConflict(conflicts);
+}
+
+/** `trip` with the patch's fields; fields the patch leaves undefined keep their value. */
+function applyChanges(trip: Trip, changes: UpdateTripInput): Trip {
+  return {
+    ...trip,
+    date: changes.date ?? trip.date,
+    departureTime: changes.departureTime ?? trip.departureTime,
+    durationMinutes: changes.durationMinutes ?? trip.durationMinutes,
+    origin: changes.origin ?? trip.origin,
+    destination: changes.destination ?? trip.destination,
+    busId: changes.busId ?? trip.busId,
+    driverId: changes.driverId ?? trip.driverId,
+  };
+}
+
 export const mockTripService: TripService = {
   search(query) {
     return mockRead((db) => {
       const { date } = parseInput(tripSearchInputSchema, query);
       const now = nowIst();
-      if (date < now.date) throw fieldError("date", "Date cannot be in the past", "PAST_DATE");
+      assertNotPastDate(date, now);
 
-      const holiday = holidayOn(db, date) ?? null;
-      if (holiday) return { date, holiday, trips: [] };
+      const closure = closureOn(db, date);
+      if (closure) return { date, closure, trips: [] };
       const index = indexDb(db);
       const trips = db.trips
         .filter((trip) => trip.date === date && trip.status !== "cancelled")
         .map((trip) => toTripSearchItem(index, trip, now))
         .toSorted(byTimeThenBus);
-      return { date, holiday: null, trips };
+      return { date, closure: null, trips };
+    });
+  },
+
+  nextOperatingDay(from) {
+    return mockRead((db) => {
+      const query = parseInput(nextOperatingDayQuerySchema, { from });
+      const today = nowIst().date;
+      return nextOperatingDay(db, query.from && query.from > today ? query.from : today);
     });
   },
 
@@ -204,23 +314,36 @@ export const mockTripService: TripService = {
     });
   },
 
+  previewSchedule(input) {
+    return mockRead((db) => {
+      requireUser(db, ["admin"]);
+      return scheduleDates(db, parseInput(tripScheduleInputSchema, input));
+    });
+  },
+
   create(input) {
     return mockWrite((draft) => {
-      const admin = requireUser(draft, ["admin"]);
-      const values = parseInput(tripInputSchema, input);
+      requireUser(draft, ["admin"]);
+      const { repeat, ...values } = parseInput(tripInputSchema, input);
       const now = nowIst();
-      assertNotPast(values.date, values.departureTime, now);
-      assertNotHoliday(draft, values.date);
-      const bus = activeBus(draft, values.busId);
+      assertNotPastDate(values.date, now);
+      if (!repeat) assertOperatingDay(draft, values.date);
+      activeBus(draft, values.busId);
       assertActiveDriver(draft, values.driverId);
-      assertEndsSameDay(values.departureTime, bus.durationMinutes);
-      assertNoScheduleConflict(draft, { ...values, durationMinutes: bus.durationMinutes });
+      assertEndsSameDay(values.departureTime, values.durationMinutes);
+
+      const { dates, skipped } = scheduleDates(draft, { date: values.date, repeat });
+      const [firstDate] = dates;
+      if (firstDate === undefined) throw fieldError("until", EMPTY_SCHEDULE_MESSAGE, "EMPTY_SCHEDULE");
+      assertNotPast(firstDate, values.departureTime, now);
 
       const at = nowIso();
-      const trip: Trip = {
+      const { date: startDate, ...slot } = values;
+      const newTrip = (date: ISODate, seriesId: string | null): Trip => ({
         id: newId("trp"),
-        ...values,
-        durationMinutes: bus.durationMinutes,
+        ...slot,
+        date,
+        seriesId,
         status: "scheduled",
         startedAt: null,
         completedAt: null,
@@ -228,9 +351,27 @@ export const mockTripService: TripService = {
         cancellationReason: null,
         createdAt: at,
         updatedAt: at,
+      });
+
+      if (!repeat) {
+        const trip = newTrip(firstDate, null);
+        assertNoScheduleConflict(draft, trip);
+        draft.trips.push(trip);
+        return { trips: [toTripSummary(indexDb(draft), trip)], series: null, skipped };
+      }
+      const series: TripSeries = {
+        id: newId("srs"),
+        ...slot,
+        weekdays: repeat.weekdays,
+        startDate,
+        endDate: repeat.until,
+        createdAt: at,
       };
-      draft.trips.push(trip);
-      return toTripDetails(indexDb(draft), trip, admin, now);
+      const trips = dates.map((date) => newTrip(date, series.id));
+      addSeriesTrips(draft, trips);
+      draft.series.push(series);
+      const index = indexDb(draft);
+      return { trips: trips.map((trip) => toTripSummary(index, trip)), series, skipped };
     });
   },
 
@@ -244,9 +385,8 @@ export const mockTripService: TripService = {
         throw conflict("TRIP_NOT_EDITABLE", "Only upcoming trips can be edited");
       }
 
-      const changed = TRIP_EDITABLE_FIELDS.filter(
-        (field) => changes[field] !== undefined && changes[field] !== trip[field],
-      );
+      const next = applyChanges(trip, changes);
+      const changed = TRIP_EDITABLE_FIELDS.filter((field) => next[field] !== trip[field]);
       if (changed.length === 0) return toTripDetails(indexDb(draft), trip, admin, now);
 
       const bookedSeats = countBookedSeats(draft.bookings, trip.id);
@@ -254,27 +394,26 @@ export const mockTripService: TripService = {
       if (locked.length > 0) {
         throw conflict(
           "TRIP_LOCKED_FIELDS",
-          `This trip has ${pluralize(bookedSeats, "booking")}, so its date and direction can't change. Cancel it and create a new trip instead.`,
+          `This trip has ${pluralize(bookedSeats, "booking")}, so its date and route can't change. Cancel it and create a new trip instead.`,
           { fieldErrors: Object.fromEntries(locked.map((field) => [field, "Locked — this trip has bookings"])) },
         );
       }
 
-      const next: Trip = { ...trip, ...changes };
       const has = (field: (typeof changed)[number]) => changed.includes(field);
+      if (isSameStop(next.origin, next.destination)) {
+        throw fieldError("destination", "Destination must differ from the origin");
+      }
       if (has("date") || has("departureTime")) assertNotPast(next.date, next.departureTime, now);
-      if (has("date")) assertNotHoliday(draft, next.date);
+      if (has("date")) {
+        assertOperatingDay(draft, next.date);
+        assertWithinSeries(draft, next);
+      }
       if (has("busId")) {
         const bus = activeBus(draft, next.busId);
-        const route = toTripSummary(indexDb(draft), trip).route;
-        if (bookedSeats > 0 && !isSameRoute(route, routeEndpoints(bus, next.direction))) {
-          const message = `${bus.name} serves ${bus.origin} ⇄ ${bus.destination}, but this trip has ${pluralize(bookedSeats, "booking")} for ${formatRoute(route)}`;
-          throw conflict("TRIP_BUS_ROUTE_MISMATCH", message, { fieldErrors: { busId: message } });
-        }
         if (bus.capacity < bookedSeats) {
           const message = `${bus.name} has ${bus.capacity} seats but this trip has ${pluralize(bookedSeats, "booking")}`;
           throw conflict("CAPACITY_BELOW_BOOKINGS", message, { fieldErrors: { busId: message } });
         }
-        next.durationMinutes = bus.durationMinutes;
       }
       if (has("driverId")) assertActiveDriver(draft, next.driverId);
       assertEndsSameDay(next.departureTime, next.durationMinutes);
@@ -288,18 +427,25 @@ export const mockTripService: TripService = {
   cancel(id, input = {}) {
     return mockWrite((draft) => {
       const admin = requireUser(draft, ["admin"]);
-      const { reason } = parseInput(cancelTripSchema, input);
+      const { reason, scope = "trip" } = parseInput(cancelTripSchema, input);
       const trip = findTrip(draft, id);
       if (trip.status !== "scheduled") {
         const violation = invalidTransition(trip);
         throw conflict(violation.reason, violation.message);
       }
-      const cancelledBookings = cancelTripWithBookings(draft, trip, {
+      const targets = scope === "series" ? seriesCancelTargets(draft, trip) : [trip];
+      const cancellation: Cancellation<"trip_cancelled"> = {
         reason: reason || TRIP_CANCELLED_REASON,
         source: "trip_cancelled",
         at: nowIso(),
-      });
-      return { trip: toTripDetails(indexDb(draft), trip, admin, nowIst()), cancelledBookings };
+      };
+      let cancelledBookings = 0;
+      for (const target of targets) cancelledBookings += cancelTripWithBookings(draft, target, cancellation);
+      return {
+        trip: toTripDetails(indexDb(draft), trip, admin, nowIst()),
+        cancelledTrips: targets.length,
+        cancelledBookings,
+      };
     });
   },
 

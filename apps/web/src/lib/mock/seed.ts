@@ -7,7 +7,7 @@ import { buildBuses } from "./buses";
 import { type MockDb, SCHEMA_VERSION } from "./db";
 import { buildDrivers } from "./drivers";
 import { generateHolidays } from "./holidays";
-import { generateTrips, operatingDays } from "./trips";
+import { anchorDay, generateSchedule, operatingDays } from "./trips";
 import {
   buildAdmin,
   buildDemoCustomer,
@@ -25,6 +25,8 @@ const MS_PER_MINUTE = 60_000;
 /**
  * Builds the demo database for `today` (IST). Everything is deterministic for a given date;
  * `seededAtMs` only caps creation timestamps so nothing appears to be created in the future.
+ * No trip runs on a Sunday or holiday; the headline facts sit on the anchor day, the first
+ * operating day on or after today (see `anchorDay`).
  */
 export function createSeedDb(today: ISODate, seededAtMs: number): MockDb {
   const admin = buildAdmin(today);
@@ -43,9 +45,11 @@ export function createSeedDb(today: ISODate, seededAtMs: number): MockDb {
   const buses = buildBuses(today);
   const holidays = generateHolidays(today);
   const days = operatingDays(today, new Set(holidays.map((holiday) => holiday.date)));
-  const trips = generateTrips({ today, days, buses, seededAtMs });
+  const anchor = anchorDay(days, today);
+  const { series, trips } = generateSchedule({ today, anchor, days, seededAtMs });
   const bookings = generateBookings({
     today,
+    anchor,
     seededAtMs,
     days,
     trips,
@@ -71,6 +75,7 @@ export function createSeedDb(today: ISODate, seededAtMs: number): MockDb {
     users,
     credentials: users.map((user) => ({ userId: user.id, password: DEMO_PASSWORD })),
     buses,
+    series,
     trips,
     bookings,
     holidays,

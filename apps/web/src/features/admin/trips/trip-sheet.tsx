@@ -20,11 +20,16 @@ import { QueryError } from "@/components/common/query-error";
 import { RouteLabel } from "@/components/common/route-label";
 import { TripStatusBadge } from "@/components/status/trip-status-badge";
 import { StopsLabel } from "@/components/common/stops-label";
-import { formatDateLong, formatDuration, formatInstant, formatTime } from "@/lib/datetime";
+import {
+  formatDateLong,
+  formatDateRange,
+  formatDuration,
+  formatInstant,
+  formatTime,
+  formatWeekdays,
+} from "@/lib/datetime";
 import { formatMobile, formatOccupancy, formatSeats, telHref } from "@/lib/format";
 import { useTripPassengers } from "@/queries/trips";
-
-import { TRIP_DIRECTION_LABEL } from "./trip-route";
 
 interface TripSheetProps {
   /** Kept while the sheet closes so its content does not vanish mid-animation. */
@@ -43,7 +48,6 @@ function tripItems(trip: TripWithPassengers): DetailListItem[] {
       value: `${formatTime(trip.departureTime)} → ${formatTime(trip.arrivalTime)} (${formatDuration(trip.durationMinutes)})`,
     },
     { label: "Route", value: <RouteLabel route={trip.route} compact /> },
-    { label: "Direction", value: TRIP_DIRECTION_LABEL[trip.direction] },
     {
       label: "Bus",
       value: (
@@ -72,6 +76,13 @@ function tripItems(trip: TripWithPassengers): DetailListItem[] {
       value: `${formatOccupancy(trip.bookedSeats, trip.capacity)} · ${formatSeats(trip.availableSeats)}`,
     },
   ];
+  if (trip.series) {
+    items.push({
+      label: "Series",
+      value: `Repeats ${formatWeekdays(trip.series.weekdays)} · ${formatDateRange(trip.series.startDate, trip.series.endDate)}`,
+      fullWidth: true,
+    });
+  }
   if (trip.startedAt) items.push({ label: "Started", value: formatInstant(trip.startedAt) });
   if (trip.completedAt) items.push({ label: "Completed", value: formatInstant(trip.completedAt) });
   if (trip.cancelledAt) {

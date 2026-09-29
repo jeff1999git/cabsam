@@ -6,8 +6,14 @@ export const TURNAROUND_MINUTES = 15;
 
 export const BUS_CAPACITY = { min: 10, max: 60 } as const;
 
-/** Each-way running time of a bus's route. */
-export const ROUTE_DURATION_MINUTES = { min: 15, max: 300 } as const;
+/** A trip's running time (arrival − departure). */
+export const TRIP_DURATION_MINUTES = { min: 15, max: 600 } as const;
+
+/** A repeating trip ends at most this many days after its first date. */
+export const TRIP_REPEAT_MAX_DAYS = 90;
+
+/** Suggested "Repeat until" in the trip form: four weeks including the first date. */
+export const TRIP_REPEAT_DEFAULT_DAYS = 27;
 
 export const BOOKINGS_PAGE_SIZE = { default: 20, max: 100 } as const;
 

@@ -16,6 +16,7 @@ import { useSession } from "@/hooks/use-session";
 import { today } from "@/lib/datetime";
 import type { StopPointsValues } from "@/lib/schemas/booking";
 import { useMyBookings } from "@/queries/bookings";
+import { useNextOperatingDay } from "@/queries/trips";
 
 import { BookingCard, BookingCardSkeleton } from "./booking-card";
 
@@ -94,7 +95,10 @@ export function CustomerDashboardScreen() {
   const bookHeadingId = useId();
   const bookingsHeadingId = useId();
   const [minDate] = useState(today);
-  const [date, setDate] = useState<ISODate>(minDate);
+  const nextOpen = useNextOperatingDay();
+  const [pickedDate, setPickedDate] = useState<ISODate | null>(null);
+  // Until a date is picked: the next day with service (today when it runs).
+  const date = pickedDate ?? nextOpen.data ?? minDate;
   const [stops, setStops] = useState<StopPointsValues>({ pickupPoint: "", dropPoint: "" });
   const upcoming = useMyBookings({ scope: "upcoming" });
 
@@ -116,7 +120,7 @@ export function CustomerDashboardScreen() {
           mode="navigate"
           date={date}
           minDate={minDate}
-          onDateChange={setDate}
+          onDateChange={setPickedDate}
           stops={stops}
           onStopsChange={setStops}
           onSubmit={(values) =>

@@ -5,7 +5,7 @@ import { tripSearchSchema } from "@/lib/schemas/search";
 
 /** Everything the home page reads from `/?date=…&trip=…&pickup=…&drop=…`. */
 export interface HomeSearchParams {
-  /** Travel date; missing, malformed or past dates fall back to today. */
+  /** Travel date; missing, malformed or past dates fall back to the next day with service. */
   date?: string;
   /** The trip the person picked explicitly (used only while it is still bookable). */
   trip?: string;
@@ -41,10 +41,10 @@ export function homeHref(params: HomeSearchParams): Route {
   return `/${toQueryString(HOME_PARAM_KEYS.map((key) => [key, params[key]] as const))}` as Route;
 }
 
-/** The home page's travel date: the URL date when it is valid and not in the past, else `fallback`. */
-export function resolveSearchDate(raw: string | undefined, fallback: ISODate): ISODate {
+/** The URL travel date when it is valid and not in the past, else `null` (the page picks a default). */
+export function parseSearchDate(raw: string | undefined): ISODate | null {
   const parsed = tripSearchSchema.safeParse({ date: raw });
-  return parsed.success ? parsed.data.date : fallback;
+  return parsed.success ? parsed.data.date : null;
 }
 
 /** `/book/<tripId>?pickup=…&drop=…`; blank stops are left out (the booking page asks for them). */
