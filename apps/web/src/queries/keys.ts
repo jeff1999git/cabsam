@@ -8,13 +8,11 @@ import type {
   MyBookingsQuery,
   MyTripsQuery,
   TripListQuery,
-  TripSearchQuery,
 } from "@excelcabs/types";
 
 /** First segment of every query key — the unit mutations invalidate (`meta.invalidates`). */
 export type QueryDomain =
   | "auth"
-  | "routes"
   | "trips"
   | "bookings"
   | "buses"
@@ -34,11 +32,8 @@ export const queryKeys = {
   auth: {
     me: () => ["auth", "me"] as const,
   },
-  routes: {
-    list: () => ["routes", "list"] as const,
-  },
   trips: {
-    search: (query: TripSearchQuery | null) => ["trips", "search", query] as const,
+    search: (date: ISODate | null) => ["trips", "search", date] as const,
     forBooking: (id: string) => ["trips", "for-booking", id] as const,
     list: (query?: TripListQuery) => ["trips", "list", clean(query)] as const,
     detail: (id: string) => ["trips", "detail", id] as const,

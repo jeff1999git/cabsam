@@ -13,6 +13,7 @@ import { useParams } from "next/navigation";
 import { QueryError } from "@/components/common/query-error";
 import { RouteLabel } from "@/components/common/route-label";
 import { BookingStatusBadge } from "@/components/status/booking-status-badge";
+import { StopsLabel } from "@/components/common/stops-label";
 import { formatDateLong, formatDuration, formatInstant, formatTime } from "@/lib/datetime";
 import { formatMobile } from "@/lib/format";
 import { useBooking } from "@/queries/bookings";
@@ -53,6 +54,15 @@ function BookingDetail({ booking }: { booking: BookingDetails }) {
           </h1>
           <BookingStatusBadge status={booking.status} />
         </div>
+        <p className="mt-3 text-lg font-semibold">
+          <StopsLabel prominent pickupPoint={booking.pickupPoint} dropPoint={booking.dropPoint} />
+        </p>
+        <p className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
+          <span className="shrink-0">
+            {formatTime(trip.departureTime)} · {trip.bus.name} ·
+          </span>
+          <RouteLabel route={trip.route} />
+        </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -64,12 +74,14 @@ function BookingDetail({ booking }: { booking: BookingDetails }) {
             <DetailList
               columns={2}
               items={[
+                { label: "Pickup", value: booking.pickupPoint },
+                { label: "Drop", value: booking.dropPoint },
                 { label: "Date", value: formatDateLong(trip.date) },
                 {
                   label: "Departure → est. arrival",
                   value: `${formatTime(trip.departureTime)} → ${formatTime(trip.arrivalTime)}`,
                 },
-                { label: "Route", value: <RouteLabel route={trip.route} /> },
+                { label: "Bus route", value: <RouteLabel route={trip.route} /> },
                 { label: "Duration", value: formatDuration(trip.durationMinutes) },
               ]}
             />
@@ -157,7 +169,7 @@ function BookingDetailSkeleton() {
   );
 }
 
-/** `/customer/bookings/[bookingId]`: one booking with its trip, bus, driver and passenger. */
+/** `/customer/bookings/[bookingId]`: one booking (pickup → drop) with its trip, bus, driver and passenger. */
 export function BookingDetailScreen() {
   const { bookingId } = useParams<{ bookingId: string }>();
   const booking = useBooking(bookingId);

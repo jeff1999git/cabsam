@@ -9,11 +9,21 @@ import { Skeleton } from "@excelcabs/ui/components/skeleton";
 import { DetailList } from "@excelcabs/ui/composites/detail-list";
 import { eyebrowClassName } from "@excelcabs/ui/lib/styles";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowRight, CircleAlert, CircleCheck, Phone, UserRound } from "lucide-react";
+import {
+  ArrowRight,
+  CircleAlert,
+  CircleCheck,
+  CircleDot,
+  Info,
+  MapPin,
+  Phone,
+  UserRound,
+} from "lucide-react";
+import type { Route } from "next";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 
 import { QueryError } from "@/components/common/query-error";
 import { RouteLabel } from "@/components/common/route-label";
@@ -22,7 +32,11 @@ import { useSession } from "@/hooks/use-session";
 import { formatDateLong, formatTime } from "@/lib/datetime";
 import { applyServiceError } from "@/lib/form";
 import { formatMobile, formatRoute, formatSeats } from "@/lib/format";
-import { type PassengerDetailsValues, passengerDetailsSchema } from "@/lib/schemas/booking";
+import {
+  type PassengerDetailsValues,
+  passengerDetailsSchema,
+  type StopPointsValues,
+} from "@/lib/schemas/booking";
 import { useCreateBooking } from "@/queries/bookings";
 import { useTripForBooking } from "@/queries/trips";
 import { isServiceError } from "@/services/errors";
@@ -50,41 +64,41 @@ const STEP_INDEX: Record<FlowState["step"], number> = {
   confirmed: BOOKING_STEPS.length,
 };
 
-function TripSummaryCard({ trip, changeable }: { trip: TripSearchItem; changeable: boolean }) {
+function TripSummaryCard({ trip, changeHref }: { trip: TripSearchItem; changeHref: Route }) {
   return (
     <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-card sm:flex-row sm:items-center sm:p-5">
       <div className="flex min-w-0 flex-1 items-center gap-4">
         <TimeTile time={trip.departureTime} />
         <div className="min-w-0">
-          <p className="font-semibold">{formatDateLong(trip.date)}</p>
+          <p className="flex flex-wrap items-baseline gap-x-2">
+            <span className="text-base font-bold">{trip.bus.name}</span>
+            <span className="font-mono text-xs text-muted-foreground">{trip.bus.registrationNumber}</span>
+          </p>
+          <p className="text-sm">
+            {formatDateLong(trip.date)} · {formatSeats(trip.availableSeats)}
+          </p>
           <p className="truncate text-sm text-muted-foreground">
             <RouteLabel route={trip.route} />
           </p>
-          <p className="text-sm text-muted-foreground">
-            {trip.bus.name} · {formatSeats(trip.availableSeats)}
-          </p>
         </div>
       </div>
-      {changeable ? (
-        <Button variant="soft" asChild className="sm:shrink-0">
-          <Link
-            href={homeHref({
-              date: trip.date,
-              from: trip.route.origin,
-              to: trip.route.destination,
-              trip: trip.id,
-            })}
-          >
-            Change trip
-          </Link>
-        </Button>
-      ) : null}
+      <Button variant="soft" asChild className="sm:shrink-0">
+        <Link href={changeHref}>Change trip</Link>
+      </Button>
     </div>
   );
 }
 
-function BookingFlow({ trip, user }: { trip: TripSearchItem; user: SessionUser }) {
+interface BookingFlowProps {
+  trip: TripSearchItem;
+  user: SessionUser;
+  /** Pickup / drop typed on the home page (`?pickup=…&drop=…`), `""` when absent. */
+  initialStops: StopPointsValues;
+}
+
+function BookingFlow({ trip, user, initialStops }: BookingFlowProps) {
   const id = useId();
+  const stopsHelperId = `${id}-stops-helper`;
   const [flow, setFlow] = useState<FlowState>({ step: "passenger" });
   /** Message of a CONFLICT the service raised on confirm (trip full / departed / not running). */
   const [blocked, setBlocked] = useState<string | null>(null);
@@ -94,8 +108,12 @@ function BookingFlow({ trip, user }: { trip: TripSearchItem; user: SessionUser }
 
   const form = useForm<PassengerDetailsValues>({
     resolver: zodResolver(passengerDetailsSchema),
-    defaultValues: { passengerName: user.name, passengerMobile: user.mobile },
+    defaultValues: { passengerName: user.name, passengerMobile: user.mobile, ...initialStops },
     mode: "onTouched",
+  });
+  const [pickupPoint, dropPoint] = useWatch({
+    control: form.control,
+    name: ["pickupPoint", "dropPoint"],
   });
 
   useEffect(() => {
@@ -104,18 +122,16 @@ function BookingFlow({ trip, user }: { trip: TripSearchItem; user: SessionUser }
     headingRef.current?.focus();
   }, [flow.step]);
 
-  const findAnotherHref = homeHref({
-    date: trip.date,
-    from: trip.route.origin,
-    to: trip.route.destination,
-  });
+  // Back to the home search for this date, keeping the stops typed so far.
+  const findAnotherHref = homeHref({ date: trip.date, pickup: pickupPoint, drop: dropPoint });
+  const changeTripHref = homeHref({ date: trip.date, trip: trip.id, pickup: pickupPoint, drop: dropPoint });
 
   async function confirmBooking(passenger: PassengerDetailsValues) {
     try {
       const booking = await createBooking.mutateAsync({ tripId: trip.id, ...passenger });
       setFlow({ step: "confirmed", booking });
     } catch (error) {
-      // DUPLICATE_BOOKING carries a field error → back to the passenger step to fix it.
+      // Field errors (pickup / drop, DUPLICATE_BOOKING on the mobile) → back to the passenger step.
       if (applyServiceError(error, form.setError)) {
         setFlow({ step: "passenger" });
         return;
@@ -142,7 +158,8 @@ function BookingFlow({ trip, user }: { trip: TripSearchItem; user: SessionUser }
               Booking Confirmed
             </h1>
             <p className="mt-1 text-muted-foreground">
-              Your seat is reserved. Please be at the pickup point a few minutes before departure.
+              Your seat is reserved. Please be at your pickup point in good time — the bus leaves{" "}
+              {booking.trip.route.origin} at {formatTime(booking.trip.departureTime)}.
             </p>
           </div>
           <div className="w-full rounded-xl bg-primary-soft px-4 py-4">
@@ -151,15 +168,24 @@ function BookingFlow({ trip, user }: { trip: TripSearchItem; user: SessionUser }
               {booking.id}
             </p>
           </div>
-          <div className="text-sm text-muted-foreground">
-            <p>
-              {formatDateLong(booking.trip.date)} · {formatTime(booking.trip.departureTime)} ·{" "}
-              {formatRoute(booking.trip.route)} · {booking.trip.bus.name}
-            </p>
-            <p className="mt-1">
-              Passenger: {booking.passengerName} · {formatMobile(booking.passengerMobile)}
-            </p>
-          </div>
+          <DetailList
+            columns={2}
+            className="w-full rounded-xl border p-4 text-left sm:p-5"
+            items={[
+              { label: "Pickup", value: booking.pickupPoint },
+              { label: "Drop", value: booking.dropPoint },
+              {
+                label: "Date & time",
+                value: `${formatDateLong(booking.trip.date)} · ${formatTime(booking.trip.departureTime)}`,
+              },
+              { label: "Bus", value: `${booking.trip.bus.name} · ${formatRoute(booking.trip.route)}` },
+              {
+                label: "Passenger",
+                value: `${booking.passengerName} · ${formatMobile(booking.passengerMobile)}`,
+                fullWidth: true,
+              },
+            ]}
+          />
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
             <Button size="lg" asChild>
               <Link href={`/customer/bookings/${booking.id}`}>View Booking</Link>
@@ -178,7 +204,7 @@ function BookingFlow({ trip, user }: { trip: TripSearchItem; user: SessionUser }
   return (
     <>
       <BookingStepper current={STEP_INDEX[flow.step]} />
-      <TripSummaryCard trip={trip} changeable />
+      <TripSummaryCard trip={trip} changeHref={changeTripHref} />
 
       {unbookable ? (
         <Alert variant="warning">
@@ -246,6 +272,58 @@ function BookingFlow({ trip, user }: { trip: TripSearchItem; user: SessionUser }
                 </Field>
               )}
             />
+            <div className="flex flex-col gap-3">
+              <div className="grid gap-5 sm:grid-cols-2">
+                <Controller
+                  name="pickupPoint"
+                  control={form.control}
+                  render={({ field, fieldState }) => (
+                    <Field data-invalid={fieldState.invalid}>
+                      <FieldLabel htmlFor={`${id}-pickup`} className={eyebrowClassName}>
+                        Pickup Point
+                      </FieldLabel>
+                      <Input
+                        {...field}
+                        id={`${id}-pickup`}
+                        icon={<CircleDot />}
+                        placeholder="e.g. Aluva Metro"
+                        aria-invalid={fieldState.invalid}
+                        aria-describedby={stopsHelperId}
+                        className="h-12 md:h-12"
+                      />
+                      <FieldError errors={[fieldState.error]} />
+                    </Field>
+                  )}
+                />
+                <Controller
+                  name="dropPoint"
+                  control={form.control}
+                  render={({ field, fieldState }) => (
+                    <Field data-invalid={fieldState.invalid}>
+                      <FieldLabel htmlFor={`${id}-drop`} className={eyebrowClassName}>
+                        Drop Point
+                      </FieldLabel>
+                      <Input
+                        {...field}
+                        id={`${id}-drop`}
+                        icon={<MapPin />}
+                        placeholder="e.g. Kakkanad"
+                        aria-invalid={fieldState.invalid}
+                        aria-describedby={stopsHelperId}
+                        className="h-12 md:h-12"
+                      />
+                      <FieldError errors={[fieldState.error]} />
+                    </Field>
+                  )}
+                />
+              </div>
+              <p id={stopsHelperId} className="flex items-start gap-2 text-sm text-muted-foreground">
+                <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+                <span>
+                  Anywhere along <RouteLabel route={trip.route} />
+                </span>
+              </p>
+            </div>
           </FieldGroup>
           <div className="mt-6 flex justify-end">
             <Button type="submit" size="lg" className="w-full sm:w-auto">
@@ -266,8 +344,10 @@ function BookingFlow({ trip, user }: { trip: TripSearchItem; user: SessionUser }
             items={[
               { label: "Date", value: formatDateLong(trip.date) },
               { label: "Time", value: formatTime(trip.departureTime) },
-              { label: "Route", value: <RouteLabel route={trip.route} /> },
+              { label: "Pickup", value: flow.passenger.pickupPoint },
+              { label: "Drop", value: flow.passenger.dropPoint },
               { label: "Bus", value: `${trip.bus.name} · ${trip.bus.registrationNumber}` },
+              { label: "Bus route", value: <RouteLabel route={trip.route} /> },
               {
                 label: "Passenger",
                 value: `${flow.passenger.passengerName} · ${formatMobile(flow.passenger.passengerMobile)}`,
@@ -333,15 +413,28 @@ function BookingScreenSkeleton() {
   );
 }
 
-/** `/book/[tripId]`: passenger details → review → confirmation (the RoleGuard ensures a customer). */
+/**
+ * `/book/[tripId]?pickup=…&drop=…`: passenger details (incl. pickup / drop) → review → confirmation
+ * (the RoleGuard ensures a customer).
+ */
 export function BookingScreen() {
   const { tripId } = useParams<{ tripId: string }>();
+  const searchParams = useSearchParams();
   const { status, session } = useSession();
   const trip = useTripForBooking(tripId);
+  const pickup = searchParams.get("pickup") ?? "";
+  const drop = searchParams.get("drop") ?? "";
 
   let content;
   if (trip.data && status === "authenticated") {
-    content = <BookingFlow key={trip.data.id} trip={trip.data} user={session.user} />;
+    content = (
+      <BookingFlow
+        key={trip.data.id}
+        trip={trip.data}
+        user={session.user}
+        initialStops={{ pickupPoint: pickup, dropPoint: drop }}
+      />
+    );
   } else if (trip.isError) {
     content =
       isServiceError(trip.error) && trip.error.code === "NOT_FOUND" ? (
@@ -353,7 +446,7 @@ export function BookingScreen() {
             <AlertDescription>
               <p>This trip may have been removed. Search again to find another one.</p>
               <Button variant="soft" size="sm" className="mt-1" asChild>
-                <Link href="/">Find another trip</Link>
+                <Link href={homeHref({ pickup, drop })}>Find another trip</Link>
               </Button>
             </AlertDescription>
           </Alert>

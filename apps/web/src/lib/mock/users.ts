@@ -1,4 +1,4 @@
-import type { Admin, Customer, ISODate, ISODateTime } from "@excelcabs/types";
+import type { Admin, Booking, Customer, ISODate, ISODateTime } from "@excelcabs/types";
 
 import { DEMO_ACCOUNTS } from "@/config/demo";
 import { addDays, istToEpoch, istToInstant } from "@/lib/datetime";
@@ -80,21 +80,30 @@ export function buildSpamCustomer(today: ISODate, disabledAt: ISODateTime): Cust
 
 /** Regular riders who are always on today's 7:00 AM Shakthan Stand → SmartCity manifest. */
 const FIXED_PASSENGERS = [
-  { id: "usr_cus_surya", name: "Surya", mobile: "9947963408" },
-  { id: "usr_cus_rahul", name: "Rahul", mobile: "9876543210" },
-  { id: "usr_cus_anu", name: "Anu", mobile: "9847000000" },
+  { id: "usr_cus_surya", name: "Surya", mobile: "9947963408", pickupPoint: "Shakthan Stand", dropPoint: "SmartCity" },
+  { id: "usr_cus_rahul", name: "Rahul", mobile: "9876543210", pickupPoint: "Chalakudy", dropPoint: "Kakkanad" },
+  { id: "usr_cus_anu", name: "Anu", mobile: "9847000000", pickupPoint: "Angamaly", dropPoint: "SmartCity" },
 ] as const;
 
-export function buildFixedPassengers(today: ISODate): Customer[] {
-  return FIXED_PASSENGERS.map((passenger, index) => {
+/** A regular rider and where they board and get off on today's 7:00 AM trip. */
+export interface FixedPassenger extends Pick<Booking, "pickupPoint" | "dropPoint"> {
+  customer: Customer;
+}
+
+export function buildFixedPassengers(today: ISODate): FixedPassenger[] {
+  return FIXED_PASSENGERS.map(({ pickupPoint, dropPoint, ...passenger }, index) => {
     const createdAt = joinedAt(today, 300 - index * 40);
     return {
-      ...passenger,
-      role: "customer",
-      email: `${passenger.name.toLowerCase()}@example.com`,
-      status: "active",
-      createdAt,
-      updatedAt: createdAt,
+      customer: {
+        ...passenger,
+        role: "customer",
+        email: `${passenger.name.toLowerCase()}@example.com`,
+        status: "active",
+        createdAt,
+        updatedAt: createdAt,
+      },
+      pickupPoint,
+      dropPoint,
     };
   });
 }

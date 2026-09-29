@@ -1,29 +1,19 @@
 import type { TripSearchQuery } from "@excelcabs/types";
 import { z } from "zod";
 
-import { isoDateField, isSameStop, notPastDateField } from "./common";
-
-const stopField = (label: string) => z.string().trim().min(1, { error: `Select ${label}` });
+import { isoDateField, notPastDateField } from "./common";
 
 /**
- * Home search form and its URL state (`/?date=2026-09-28&from=Shakthan+Stand&to=SmartCity`):
- * `safeParse(Object.fromEntries(searchParams))` and only search when it succeeds.
+ * The home page's travel date (`/?date=2026-09-28`): `safeParse({ date })` and fall back to today
+ * when it fails (missing, malformed or in the past). Pickup / drop are `stopPointsSchema`
+ * (`@/lib/schemas/booking`).
  */
-export const tripSearchSchema = z
-  .object({
-    date: notPastDateField,
-    from: stopField("a boarding point"),
-    to: stopField("a destination"),
-  })
-  .refine((query) => !isSameStop(query.from, query.to), {
-    error: "Choose a different destination",
-    path: ["to"],
-  }) satisfies z.ZodType<TripSearchQuery>;
+export const tripSearchSchema = z.object({
+  date: notPastDateField,
+}) satisfies z.ZodType<TripSearchQuery>;
 export type TripSearchValues = z.infer<typeof tripSearchSchema>;
 
-/** Service-side shape check; the service applies the past-date and same-stop rules itself. */
+/** Service-side shape check; the service applies the past-date rule itself. */
 export const tripSearchInputSchema = z.object({
   date: isoDateField,
-  from: stopField("a boarding point"),
-  to: stopField("a destination"),
 }) satisfies z.ZodType<TripSearchQuery>;

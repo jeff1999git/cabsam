@@ -30,12 +30,13 @@ export function createSeedDb(today: ISODate, seededAtMs: number): MockDb {
   const admin = buildAdmin(today);
   const demoCustomer = buildDemoCustomer(today);
   const fixedPassengers = buildFixedPassengers(today);
+  const fixedCustomers = fixedPassengers.map((passenger) => passenger.customer);
   const testCustomer = buildTestCustomer(today, seededAtMs);
   const disabledAt = new Date(seededAtMs - SPAM_DISABLED_MINUTES_BEFORE_SEED * MS_PER_MINUTE).toISOString();
   const spamCustomer = buildSpamCustomer(today, disabledAt);
   const drivers = buildDrivers(today);
   const reservedMobiles = new Set(
-    [admin, demoCustomer, ...fixedPassengers, testCustomer, spamCustomer, ...drivers].map((user) => user.mobile),
+    [admin, demoCustomer, ...fixedCustomers, testCustomer, spamCustomer, ...drivers].map((user) => user.mobile),
   );
   const customers = generateCustomers(today, GENERATED_CUSTOMERS, reservedMobiles);
 
@@ -49,7 +50,7 @@ export function createSeedDb(today: ISODate, seededAtMs: number): MockDb {
     days,
     trips,
     buses,
-    pool: [...customers, ...fixedPassengers],
+    pool: [...customers, ...fixedCustomers],
     fixedPassengers,
     demoCustomer,
     disabledCustomer: { customer: spamCustomer, disabledAt },
@@ -58,7 +59,7 @@ export function createSeedDb(today: ISODate, seededAtMs: number): MockDb {
   const users: User[] = [
     admin,
     demoCustomer,
-    ...fixedPassengers,
+    ...fixedCustomers,
     testCustomer,
     spamCustomer,
     ...customers,

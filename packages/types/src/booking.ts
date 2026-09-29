@@ -17,6 +17,13 @@ export interface Booking {
   customerId: string;
   passengerName: string;
   passengerMobile: string;
+  /**
+   * Where the passenger boards, as typed by the customer (e.g. "Aluva Metro"). Free text: people
+   * board anywhere along the bus's route, so it is not checked against a stop list.
+   */
+  pickupPoint: string;
+  /** Where the passenger gets off; free text like `pickupPoint` and never the same place. */
+  dropPoint: string;
   status: BookingStatus;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
@@ -41,7 +48,7 @@ export interface MyBookingsQuery {
 }
 
 export interface BookingListQuery extends PageQuery {
-  /** Matches booking id, passenger name or passenger mobile. */
+  /** Matches booking id, passenger name, passenger mobile, pickup point or drop point. */
   q?: string;
   /** Trip date. */
   date?: ISODate;
@@ -55,6 +62,8 @@ export interface CreateBookingInput {
   tripId: string;
   passengerName: string;
   passengerMobile: string;
+  pickupPoint: string;
+  dropPoint: string;
 }
 
 export interface CancelBookingInput {

@@ -1,67 +1,56 @@
-import type { ISODate, TripSearchQuery } from "@excelcabs/types";
+import type { ISODate } from "@excelcabs/types";
 import type { Route } from "next";
 
-import { DEFAULT_SEARCH_STOPS } from "@/config/business";
-import { isValidISODate } from "@/lib/datetime";
-import { isSameStop } from "@/lib/schemas/common";
-import type { RouteNetwork } from "@/queries/routes";
+import { tripSearchSchema } from "@/lib/schemas/search";
 
-/** Date / pickup / destination of a trip search (the home page keeps it in its URL). */
-export type TripSearchState = TripSearchQuery;
-
-/** Everything the home page reads from `/?date=…&from=…&to=…&trip=…`. */
-export interface HomeSearchParams extends Partial<TripSearchState> {
-  /** The trip the person picked explicitly (kept only while it is still bookable). */
+/** Everything the home page reads from `/?date=…&trip=…&pickup=…&drop=…`. */
+export interface HomeSearchParams {
+  /** Travel date; missing, malformed or past dates fall back to today. */
+  date?: string;
+  /** The trip the person picked explicitly (used only while it is still bookable). */
   trip?: string;
+  /** Free-text pickup point as typed ("Aluva Metro"). */
+  pickup?: string;
+  /** Free-text drop point as typed ("Kakkanad"). */
+  drop?: string;
 }
 
-const PARAM_KEYS = ["date", "from", "to", "trip"] as const;
+const HOME_PARAM_KEYS = ["date", "trip", "pickup", "drop"] as const;
+
+function toQueryString(entries: ReadonlyArray<readonly [string, string | undefined]>): string {
+  const query = new URLSearchParams();
+  for (const [key, value] of entries) {
+    const trimmed = value?.trim();
+    if (trimmed) query.set(key, trimmed);
+  }
+  const search = query.toString();
+  return search ? `?${search}` : "";
+}
 
 export function readHomeSearchParams(params: Pick<URLSearchParams, "get">): HomeSearchParams {
   const result: HomeSearchParams = {};
-  for (const key of PARAM_KEYS) {
+  for (const key of HOME_PARAM_KEYS) {
     const value = params.get(key);
     if (value) result[key] = value;
   }
   return result;
 }
 
-/** `/` with the given search state as its query string (empty values are left out). */
+/** `/` with the given search as its query string (blank values are left out). */
 export function homeHref(params: HomeSearchParams): Route {
-  const query = new URLSearchParams();
-  for (const key of PARAM_KEYS) {
-    const value = params[key];
-    if (value) query.set(key, value);
-  }
-  const search = query.toString();
-  return search ? `/?${search}` : "/";
+  return `/${toQueryString(HOME_PARAM_KEYS.map((key) => [key, params[key]] as const))}` as Route;
 }
 
-function pickStop(options: readonly string[], wanted: string | undefined): string | undefined {
-  const match = wanted === undefined ? undefined : options.find((option) => isSameStop(option, wanted));
-  return match ?? options[0];
+/** The home page's travel date: the URL date when it is valid and not in the past, else `fallback`. */
+export function resolveSearchDate(raw: string | undefined, fallback: ISODate): ISODate {
+  const parsed = tripSearchSchema.safeParse({ date: raw });
+  return parsed.success ? parsed.data.date : fallback;
 }
 
-/**
- * Fills a partial or stale search with defaults: `minDate` (today) when the date is missing or in
- * the past, the operator's main corridor (else the first served route) when the stops are unknown.
- * `null` until the route network has loaded, or when no route is active.
- */
-export function resolveTripSearch(
-  raw: Partial<TripSearchState>,
-  network: RouteNetwork | undefined,
-  minDate: ISODate,
-): TripSearchState | null {
-  if (!network) return null;
-  const from = pickStop(network.origins, raw.from ?? DEFAULT_SEARCH_STOPS.from);
-  if (from === undefined) return null;
-  const to = pickStop(network.destinationsByOrigin[from] ?? [], raw.to ?? DEFAULT_SEARCH_STOPS.to);
-  if (to === undefined) return null;
-  const date = raw.date && isValidISODate(raw.date) && raw.date >= minDate ? raw.date : minDate;
-  return { date, from, to };
-}
-
-/** Whether the reverse route (destination → pickup) is also served. */
-export function canSwapStops(network: RouteNetwork, search: TripSearchState): boolean {
-  return (network.destinationsByOrigin[search.to] ?? []).some((stop) => isSameStop(stop, search.from));
+/** `/book/<tripId>?pickup=…&drop=…`; blank stops are left out (the booking page asks for them). */
+export function bookingHref(tripId: string, stops: { pickup?: string; drop?: string }): Route {
+  return `/book/${encodeURIComponent(tripId)}${toQueryString([
+    ["pickup", stops.pickup],
+    ["drop", stops.drop],
+  ])}` as Route;
 }

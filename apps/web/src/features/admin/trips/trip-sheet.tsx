@@ -19,6 +19,7 @@ import { useId } from "react";
 import { QueryError } from "@/components/common/query-error";
 import { RouteLabel } from "@/components/common/route-label";
 import { TripStatusBadge } from "@/components/status/trip-status-badge";
+import { StopsLabel } from "@/components/common/stops-label";
 import { formatDateLong, formatDuration, formatInstant, formatTime } from "@/lib/datetime";
 import { formatMobile, formatOccupancy, formatSeats, telHref } from "@/lib/format";
 import { useTripPassengers } from "@/queries/trips";
@@ -82,9 +83,10 @@ function tripItems(trip: TripWithPassengers): DetailListItem[] {
   return items;
 }
 
+/** Name, booking ID and pickup → drop; the stops take the full row width on phones. */
 function PassengerRow({ passenger }: { passenger: TripPassenger }) {
   return (
-    <li className="flex items-center justify-between gap-3 py-2">
+    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 py-2">
       <div className="min-w-0">
         <p className="truncate font-medium">{passenger.name}</p>
         <p className="font-mono text-xs text-muted-foreground">{passenger.bookingId}</p>
@@ -92,11 +94,16 @@ function PassengerRow({ passenger }: { passenger: TripPassenger }) {
       <a
         href={telHref(passenger.mobile)}
         aria-label={`Call ${passenger.name}`}
-        className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-primary outline-none hover:bg-primary-soft focus-visible:ring-[3px] focus-visible:ring-ring/40"
+        className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-primary outline-none hover:bg-primary-soft focus-visible:ring-[3px] focus-visible:ring-ring/40 sm:row-span-2"
       >
         <Phone aria-hidden="true" className="size-4" />
         <span className="tabular-nums">{formatMobile(passenger.mobile)}</span>
       </a>
+      <StopsLabel
+        pickupPoint={passenger.pickupPoint}
+        dropPoint={passenger.dropPoint}
+        className="col-span-2 text-muted-foreground sm:col-span-1"
+      />
     </li>
   );
 }

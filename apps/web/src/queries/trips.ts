@@ -1,8 +1,8 @@
 import type {
   CancelTripInput,
+  ISODate,
   MyTripsQuery,
   TripListQuery,
-  TripSearchQuery,
   UpdateTripInput,
 } from "@excelcabs/types";
 import { keepPreviousData, skipToken, useMutation, useQuery } from "@tanstack/react-query";
@@ -24,13 +24,14 @@ const TRIP_WRITE_INVALIDATES = [
 const TRIP_STATUS_INVALIDATES = ["trips", "bookings", "dashboard"] as const satisfies readonly QueryDomain[];
 
 /**
- * Public search. Pass `null` until the form is valid. Keeps showing the previous results while a
- * new search loads (`isPlaceholderData`), and refreshes seat counts every minute.
+ * Public: every trip on `date` (all buses, both directions). Pass `null` until the date is known.
+ * Keeps showing the previous results while a new date loads (`isPlaceholderData`), and refreshes
+ * seat counts every minute.
  */
-export function useTripSearch(query: TripSearchQuery | null) {
+export function useTripSearch(date: ISODate | null) {
   return useQuery({
-    queryKey: queryKeys.trips.search(query),
-    queryFn: query ? () => tripService.search(query) : skipToken,
+    queryKey: queryKeys.trips.search(date),
+    queryFn: date ? () => tripService.search({ date }) : skipToken,
     placeholderData: keepPreviousData,
     refetchInterval: LIVE_REFETCH_INTERVAL_MS,
   });

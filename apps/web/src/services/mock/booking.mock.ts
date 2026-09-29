@@ -79,6 +79,8 @@ function matchesQuery(booking: Booking, trip: Trip | undefined, query: BookingLi
   return (
     booking.id.toLowerCase().includes(q) ||
     booking.passengerName.toLowerCase().includes(q) ||
+    booking.pickupPoint.toLowerCase().includes(q) ||
+    booking.dropPoint.toLowerCase().includes(q) ||
     (digits.length > 0 && booking.passengerMobile.includes(digits))
   );
 }
@@ -115,6 +117,8 @@ export const mockBookingService: BookingService = {
         customerId: customer.id,
         passengerName: values.passengerName,
         passengerMobile: values.passengerMobile,
+        pickupPoint: values.pickupPoint,
+        dropPoint: values.dropPoint,
         status: "confirmed",
         createdAt: at,
         updatedAt: at,

@@ -8,11 +8,15 @@ import Link from "next/link";
 import { DateTile } from "@/components/common/date-tile";
 import { RouteLabel } from "@/components/common/route-label";
 import { BookingStatusBadge } from "@/components/status/booking-status-badge";
+import { StopsLabel } from "@/components/common/stops-label";
 import { formatTime } from "@/lib/datetime";
 
 import { CancelBookingButton } from "./cancel-booking-button";
 
-/** Booking row (DATE TILE · time + bus + status · route) for the dashboard and home page lists. */
+/**
+ * Booking row for the dashboard and home page lists: DATE TILE · pickup → drop + status · time, bus
+ * and bus route · booking id and passenger.
+ */
 export function BookingCard({ booking }: { booking: BookingDetails }) {
   const { trip } = booking;
 
@@ -22,12 +26,15 @@ export function BookingCard({ booking }: { booking: BookingDetails }) {
         <DateTile date={trip.date} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <p className="font-semibold">
-              {formatTime(trip.departureTime)} · {trip.bus.name}
+            <p className="min-w-0 font-semibold">
+              <StopsLabel prominent pickupPoint={booking.pickupPoint} dropPoint={booking.dropPoint} />
             </p>
             <BookingStatusBadge status={booking.status} />
           </div>
-          <p className="mt-0.5 truncate text-sm text-muted-foreground">
+          <p className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
+            <span className="shrink-0">
+              {formatTime(trip.departureTime)} · {trip.bus.name} ·
+            </span>
             <RouteLabel route={trip.route} />
           </p>
           <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">

@@ -14,7 +14,7 @@ import { toast } from "@excelcabs/ui/components/sonner";
 import { FormDialog } from "@excelcabs/ui/composites/form-dialog";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { BusFront, CircleDot, Clock, Hash, MapPin, Users } from "lucide-react";
-import { useId } from "react";
+import { useEffect, useId } from "react";
 import { Controller, useForm } from "react-hook-form";
 
 import { BUS_STATUS_META } from "@/components/status/bus-status-badge";
@@ -29,11 +29,16 @@ interface BusFormDialogProps {
   onOpenChange: (open: boolean) => void;
   /** The bus to edit; `null` creates a new one. */
   bus: BusWithUsage | null;
+  /**
+   * Create mode: the next free "Bus N" (see `nextBusName`), pre-filled as the name and still
+   * editable. `undefined` while the fleet is loading; it is filled in when it arrives.
+   */
+  suggestedName?: string;
 }
 
 const ROUTE_LOCKED_HINT = "Locked — this bus already has trips";
 
-function defaultValues(bus: BusWithUsage | null): BusFormValues {
+function defaultValues(bus: BusWithUsage | null, suggestedName: string | undefined): BusFormValues {
   return bus
     ? {
         name: bus.name,
@@ -45,7 +50,7 @@ function defaultValues(bus: BusWithUsage | null): BusFormValues {
         status: bus.status,
       }
     : {
-        name: "",
+        name: suggestedName ?? "",
         registrationNumber: "",
         origin: "",
         destination: "",
@@ -59,7 +64,7 @@ function defaultValues(bus: BusWithUsage | null): BusFormValues {
  * Add / edit bus, including the route it permanently serves. From / To lock once the bus has run
  * a trip; capacity cannot drop below the bookings already on an upcoming trip.
  */
-export function BusFormDialog({ open, onOpenChange, bus }: BusFormDialogProps) {
+export function BusFormDialog({ open, onOpenChange, bus, suggestedName }: BusFormDialogProps) {
   const id = useId();
   const formId = `${id}-bus-form`;
   const createBus = useCreateBus();
@@ -73,8 +78,17 @@ export function BusFormDialog({ open, onOpenChange, bus }: BusFormDialogProps) {
 
   const form = useForm<BusFormValues>({
     resolver: zodResolver(busInputSchema),
-    defaultValues: defaultValues(bus),
+    defaultValues: defaultValues(bus, suggestedName),
   });
+
+  // "Add Bus" can open before the fleet has loaded: fill the suggested name in once it arrives,
+  // unless the admin has already been in the field.
+  useEffect(() => {
+    if (bus || !suggestedName) return;
+    if (form.getValues("name") === "" && !form.getFieldState("name").isTouched) {
+      form.setValue("name", suggestedName);
+    }
+  }, [bus, suggestedName, form]);
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
@@ -119,7 +133,7 @@ export function BusFormDialog({ open, onOpenChange, bus }: BusFormDialogProps) {
                 <Input
                   {...field}
                   id={`${id}-name`}
-                  placeholder="Bus 7"
+                  placeholder={suggestedName ?? "Bus 1"}
                   autoComplete="off"
                   icon={<BusFront />}
                   aria-invalid={fieldState.invalid}

@@ -58,6 +58,8 @@ function bookingItems(booking: BookingDetails): DetailListItem[] {
   const items: DetailListItem[] = [
     { label: "Passenger", value: booking.passengerName },
     { label: "Mobile", value: <CallLink name={booking.passengerName} mobile={booking.passengerMobile} /> },
+    { label: "Pickup point", value: booking.pickupPoint },
+    { label: "Drop point", value: booking.dropPoint },
     { label: "Trip date", value: formatDateLong(trip.date) },
     {
       label: "Departure",

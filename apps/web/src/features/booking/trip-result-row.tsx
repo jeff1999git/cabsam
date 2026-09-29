@@ -53,9 +53,9 @@ export function TripResultRow({ trip, selected, onSelect, onContinue }: TripResu
       <div className="flex min-w-0 flex-1 items-center gap-4">
         <TimeTile time={trip.departureTime} selected={selected} />
         <div className="min-w-0">
-          <p className="flex flex-wrap items-baseline gap-x-2 font-semibold">
-            <span>{trip.bus.name}</span>
-            <span className="font-mono text-xs font-normal text-muted-foreground">
+          <p className="flex flex-wrap items-baseline gap-x-2">
+            <span className="text-base font-bold">{trip.bus.name}</span>
+            <span className="font-mono text-xs text-muted-foreground">
               {trip.bus.registrationNumber}
             </span>
           </p>

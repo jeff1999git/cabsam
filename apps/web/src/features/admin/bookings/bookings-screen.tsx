@@ -29,6 +29,7 @@ import { QueryError } from "@/components/common/query-error";
 import { RouteLabel } from "@/components/common/route-label";
 import { BOOKING_STATUS_META, BookingStatusBadge } from "@/components/status/booking-status-badge";
 import { BOOKINGS_PAGE_SIZE } from "@/config/business";
+import { StopsLabel } from "@/components/common/stops-label";
 import { formatDayMonth, formatTime } from "@/lib/datetime";
 import { formatMobile, formatRoute, pluralize } from "@/lib/format";
 import { bookingFiltersSchema, parseSearchParams } from "@/lib/schemas/filters";
@@ -89,6 +90,7 @@ function BookingCard({ booking, onView, onCancel }: Omit<RowActionsProps, "class
             {booking.passengerName}{" "}
             <span className="text-muted-foreground">· {formatMobile(booking.passengerMobile)}</span>
           </p>
+          <StopsLabel pickupPoint={booking.pickupPoint} dropPoint={booking.dropPoint} className="mt-0.5" />
           <p className="text-xs text-muted-foreground">Driver: {trip.driver.name}</p>
         </div>
       </div>
@@ -170,6 +172,15 @@ export function AdminBookingsScreen() {
     },
     { id: "date", header: "Date", cell: (booking) => <span className="whitespace-nowrap">{formatDayMonth(booking.trip.date)}</span> },
     { id: "time", header: "Time", cell: (booking) => <span className="whitespace-nowrap">{formatTime(booking.trip.departureTime)}</span> },
+    {
+      id: "stops",
+      header: "Pickup → Drop",
+      // Free-text stops wrap inside a bounded column instead of stretching the table.
+      className: "whitespace-normal",
+      cell: (booking) => (
+        <StopsLabel pickupPoint={booking.pickupPoint} dropPoint={booking.dropPoint} className="min-w-36 max-w-56" />
+      ),
+    },
     { id: "route", header: "Route", cell: (booking) => <RouteLabel route={booking.trip.route} compact /> },
     { id: "bus", header: "Bus", cell: (booking) => booking.trip.bus.name },
     { id: "driver", header: "Driver", cell: (booking) => booking.trip.driver.name },
@@ -220,7 +231,7 @@ export function AdminBookingsScreen() {
               id={`${id}-search`}
               value={searchText}
               onValueChange={setSearchText}
-              placeholder="Search booking ID, name or mobile"
+              placeholder="Search booking ID, name, mobile or stop"
             />
           </div>
           <div className="flex flex-col gap-2">

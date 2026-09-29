@@ -48,6 +48,26 @@ export const placeNameField = z
   .min(2, { error: "Enter a place name" })
   .max(40, { error: "Use at most 40 characters" });
 
+/**
+ * Starts with a letter or digit; then letters (with their accents / vowel signs), digits, spaces
+ * and . , ' ( ) / - &
+ */
+const STOP_POINT_RE = /^[\p{L}\d][\p{L}\p{M}\d .,'()/&-]*$/u;
+
+/**
+ * A pickup or drop point typed by the customer, e.g. "Aluva Metro". Free text by design: people
+ * board and get off anywhere along a bus's route, so it is never checked against a stop list.
+ * `missingMessage` is shown when it is empty or too short.
+ */
+export function stopField(missingMessage: string) {
+  return z
+    .string()
+    .trim()
+    .min(2, { error: missingMessage })
+    .max(60, { error: "Use at most 60 characters" })
+    .regex(STOP_POINT_RE, { error: "Use letters, numbers, spaces and . , ' ( ) / - & only" });
+}
+
 export const isoDateField = z.iso.date({ error: "Pick a date" });
 
 export const timeField = z

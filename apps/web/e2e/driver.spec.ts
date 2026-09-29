@@ -34,6 +34,9 @@ test("today's 7:00 AM Bus 2 trip can be viewed, started and completed", async ({
   await expect(page.getByRole("link", { name: "Call Rahul" })).toHaveAttribute("href", "tel:+919876543210");
   await expect(page.getByRole("link", { name: "Call Anu" })).toHaveAttribute("href", "tel:+919847000000");
   await expect(page.getByText("Surya", { exact: true })).toBeVisible();
+  // Each passenger's own typed stops along the corridor.
+  const rahul = page.getByRole("listitem").filter({ hasText: "Rahul" });
+  await expect(rahul).toContainText("Chalakudy → Kakkanad");
 
   // Start.
   await page.getByRole("button", { name: "Start Trip" }).click();

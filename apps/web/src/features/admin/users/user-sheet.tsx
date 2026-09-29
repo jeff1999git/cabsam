@@ -22,6 +22,7 @@ import { QueryError } from "@/components/common/query-error";
 import { RouteLabel } from "@/components/common/route-label";
 import { AccountStatusBadge } from "@/components/status/account-status-badge";
 import { BookingStatusBadge } from "@/components/status/booking-status-badge";
+import { StopsLabel } from "@/components/common/stops-label";
 import { formatDateLong, formatDayMonth, formatInstant, formatTime, instantToIst } from "@/lib/datetime";
 import { formatMobile, pluralize, telHref } from "@/lib/format";
 import { useBookings } from "@/queries/bookings";
@@ -83,8 +84,9 @@ function BookingRow({ booking }: { booking: BookingDetails }) {
         <p className="mt-0.5 text-sm font-medium">
           {formatDayMonth(trip.date)} · {formatTime(trip.departureTime)}
         </p>
-        <p className="text-sm text-muted-foreground">
-          <RouteLabel route={trip.route} compact />
+        <StopsLabel pickupPoint={booking.pickupPoint} dropPoint={booking.dropPoint} />
+        <p className="text-xs text-muted-foreground">
+          <RouteLabel route={trip.route} compact className="text-xs" />
         </p>
       </div>
       <BookingStatusBadge status={booking.status} />

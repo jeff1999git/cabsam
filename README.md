@@ -46,7 +46,8 @@ and can be restored at any time with **Reset demo data** (admin sidebar or any s
 
 Useful things in the seed:
 
-- Today's 7:00 AM Shakthan Stand → SmartCity trip on Bus 2 has 18 of 40 seats booked.
+- Today's 7:00 AM Shakthan Stand → SmartCity trip on Bus 2 has 18 of 40 seats booked, with each
+  passenger's pickup and drop along the corridor (e.g. Chalakudy → Kakkanad).
 - The next operating day's 9:00 AM trip on Bus 4 is full.
 - The next fixed public holiday (for example 2 October) has no service.
 - Bus 5 and driver Shaji Paul have no trips, so they can be disabled.
@@ -56,7 +57,7 @@ Useful things in the seed:
 
 | Area | Routes | What you can do |
 |---|---|---|
-| Customer | `/`, `/book/[tripId]`, `/customer`, `/customer/bookings/[bookingId]` | Search trips, book a seat, view and cancel bookings |
+| Customer | `/`, `/book/[tripId]`, `/customer`, `/customer/bookings/[bookingId]` | Pick a date and a bus (Bus 1, Bus 2, …), type where you'll board and get off, book a seat, view and cancel bookings |
 | Driver | `/driver`, `/driver/trips/[tripId]` | See assigned trips and passengers, call a passenger, start and complete a trip |
 | Admin | `/admin`, `/admin/bookings`, `/admin/trips`, `/admin/buses`, `/admin/drivers`, `/admin/users`, `/admin/holidays` | Dashboard, manage buses (each with its route), drivers, trips, holidays and customer accounts; view and cancel bookings |
 
@@ -123,6 +124,9 @@ mock-only tooling and can be removed.
 
 - A seat is available when the bus capacity exceeds the trip's non-cancelled bookings. One booking
   is one seat for one passenger.
+- Customers search by date and choose a bus trip. Pickup and drop points are typed in, because
+  passengers board and get off anywhere along the route; they are stored on the booking and shown
+  on the driver's passenger list. They are not checked against a stop list.
 - Booking closes at departure. A trip cannot be booked when it is full, cancelled, departed or on
   a holiday. The same passenger mobile cannot be booked twice on one trip.
 - Booking IDs are `EXC-DDMMYY-NNN`: the trip date plus a running number for that date.
@@ -169,7 +173,7 @@ results do not depend on the time of day.
 | Spec | Covers | Viewports |
 |---|---|---|
 | `smoke.spec.ts` | Every route renders its heading with no horizontal scrolling | 375, 390, 430, 1280, 1440 |
-| `customer.spec.ts` | Search, sign-in redirect, booking, cancelling, sign-up | 390, 1440 |
+| `customer.spec.ts` | Bus search, typed pickup/drop, sign-in redirect, booking, cancelling, sign-up | 390, 1440 |
 | `driver.spec.ts` | Trip list, passengers, start and complete, access rules | 390, 1440 |
 | `admin.spec.ts` | Buses, drivers, trips, holidays, users, bookings, reset | 390, 1440 |
 | `responsive.spec.ts` | Mobile menus, cards instead of tables | 375, 390, 430 |

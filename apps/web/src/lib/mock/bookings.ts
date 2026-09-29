@@ -10,8 +10,10 @@ import type {
 
 import { diffDays, formatDDMMYY, istToEpoch } from "@/lib/datetime";
 
+import { corridorStops } from "./buses";
 import { rngFor, type Rng } from "./random";
 import { nthOperatingDay, tripId } from "./trips";
+import type { FixedPassenger } from "./users";
 
 export const BOOKING_ID_RE = /^EXC-(\d{6})-(\d{3,})$/;
 
@@ -31,6 +33,13 @@ const TRIP_CANCELLED_REASON = "Trip cancelled by operator";
 const ACCOUNT_DISABLED_REASON = "Account disabled";
 /** `createdPoint` of a booking pinned to the end of its date's booking window. */
 const LAST_IN_WINDOW = 1;
+/**
+ * Each stop further from the route's start is this much less likely as a pickup point (and each
+ * stop further from its end as a drop point): most people ride from near the start to near the end.
+ */
+const STOP_FALLOFF = 0.45;
+
+type StopPoints = Pick<Booking, "pickupPoint" | "dropPoint">;
 
 /** Share of seats taken, by calendar-day offset from today. */
 function loadRange(dayOffset: number): readonly [number, number] {
@@ -68,6 +77,8 @@ interface Seat {
   cancelledBy: Extract<CancellationSource, "customer" | "admin"> | null;
   /** Fixed position in the date's booking window (random when omitted). */
   createdPoint?: number;
+  /** Fixed pickup / drop point (drawn along the trip's route when omitted). */
+  points?: StopPoints;
 }
 
 interface GenerateBookingsOptions {
@@ -78,8 +89,8 @@ interface GenerateBookingsOptions {
   buses: readonly Bus[];
   /** Customers who fill trips at random. */
   pool: readonly Customer[];
-  /** Always booked on today's 7:00 AM trip. */
-  fixedPassengers: readonly Customer[];
+  /** Always booked on today's 7:00 AM trip, boarding and getting off at their usual places. */
+  fixedPassengers: readonly FixedPassenger[];
   demoCustomer: Customer;
   /** Disabled account whose one booking was cancelled at `disabledAt`. */
   disabledCustomer: { customer: Customer; disabledAt: ISODateTime };
@@ -135,10 +146,10 @@ function manifestFor(
   const rng = rngForTrip("bookings", trip, dayOffset);
 
   if (trip.id === tripId(today, TODAY_T1.templateId)) {
-    const fixedIds = new Set(fixedPassengers.map((customer) => customer.id));
+    const fixedIds = new Set(fixedPassengers.map(({ customer }) => customer.id));
     const others = rng.shuffle(pool.filter((customer) => !fixedIds.has(customer.id)));
     return [
-      ...seatsFor(fixedPassengers, false),
+      ...fixedPassengers.map(({ customer, ...points }): Seat => ({ customer, cancelledBy: null, points })),
       ...seatsFor(others.slice(0, TODAY_T1.others), false),
       ...seatsFor(others.slice(TODAY_T1.others, TODAY_T1.others + TODAY_T1.cancelled), true),
       ...pinned,
@@ -164,6 +175,8 @@ function manifestFor(
 
 interface DraftBooking extends Seat {
   trip: Trip;
+  /** The places the trip passes, in travel order. */
+  routeStops: readonly string[];
   /** Position of the booking within its trip date's booking window, in [0, 1]. */
   createdPoint: number;
   /** Position of a customer cancellation between creation and the latest possible moment. */
@@ -182,6 +195,30 @@ function bookingWindow(tripsOnDate: readonly Trip[], seededAtMs: number) {
   return { startMs: endMs - 7 * MS_PER_DAY, endMs };
 }
 
+/** Index in [0, count), each one STOP_FALLOFF times as likely as the one before it. */
+function frontLoadedIndex(rng: Rng, count: number): number {
+  const weights = Array.from({ length: count }, (_, index) => STOP_FALLOFF ** index);
+  let roll = rng.next() * weights.reduce((sum, weight) => sum + weight, 0);
+  for (const [index, weight] of weights.entries()) {
+    roll -= weight;
+    if (roll < 0) return index;
+  }
+  return count - 1;
+}
+
+/** A pickup before the drop along `routeStops` (travel order), mostly near the start and the end. */
+function drawStopPoints(rng: Rng, routeStops: readonly string[]): StopPoints {
+  const last = routeStops.length - 1;
+  const pickupIndex = frontLoadedIndex(rng, last);
+  const dropIndex = last - frontLoadedIndex(rng, last - pickupIndex);
+  const pickupPoint = routeStops[pickupIndex];
+  const dropPoint = routeStops[dropIndex];
+  if (pickupPoint === undefined || dropPoint === undefined) {
+    throw new RangeError("A route needs at least two stops");
+  }
+  return { pickupPoint, dropPoint };
+}
+
 function toBooking(
   draft: DraftBooking,
   id: string,
@@ -191,12 +228,17 @@ function toBooking(
   const { seededAtMs, disabledCustomer } = options;
   const { trip, customer, cancelledBy } = draft;
   const createdAt = new Date(createdMs).toISOString();
+  // A stream of its own per booking id, so drawing stops never shifts any other seeded value.
+  const { pickupPoint, dropPoint } =
+    draft.points ?? drawStopPoints(rngFor("booking-stops", id), draft.routeStops);
   const base = {
     id,
     tripId: trip.id,
     customerId: customer.id,
     passengerName: customer.name,
     passengerMobile: customer.mobile,
+    pickupPoint,
+    dropPoint,
     createdAt,
     completedAt: null,
     cancelledAt: null,
@@ -254,20 +296,22 @@ function toBooking(
  */
 export function generateBookings(options: GenerateBookingsOptions): Booking[] {
   const { today, days, trips, buses, seededAtMs } = options;
-  const capacityByBus = new Map(buses.map((bus) => [bus.id, bus.capacity]));
+  const busById = new Map(buses.map((bus) => [bus.id, bus]));
   const pinned = pinnedSeats(options);
 
   return days.flatMap((date) => {
     const tripsOnDate = trips.filter((trip) => trip.date === date);
     if (tripsOnDate.length === 0) return [];
     const drafts = tripsOnDate.flatMap((trip) => {
-      const capacity = capacityByBus.get(trip.busId);
-      if (capacity === undefined) throw new Error(`Unknown bus ${trip.busId}`);
+      const bus = busById.get(trip.busId);
+      if (bus === undefined) throw new Error(`Unknown bus ${trip.busId}`);
+      const routeStops = corridorStops(bus, trip.direction);
       const timingRng = rngForTrip("booking-times", trip, diffDays(today, date));
-      return manifestFor(trip, capacity, options, pinned.get(trip.id) ?? []).map(
+      return manifestFor(trip, bus.capacity, options, pinned.get(trip.id) ?? []).map(
         (seat): DraftBooking => ({
           ...seat,
           trip,
+          routeStops,
           createdPoint: seat.createdPoint ?? timingRng.next(),
           cancelPoint: timingRng.next(),
         }),

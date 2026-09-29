@@ -70,10 +70,12 @@ export interface TripSearchItem extends TripSummary {
 
 export interface TripSearchResult {
   date: ISODate;
-  from: string;
-  to: string;
   /** Set when `date` is a holiday — `trips` is then empty. */
   holiday: Holiday | null;
+  /**
+   * Every non-cancelled trip on `date` (all buses, both directions), by departure time then bus
+   * name. Departed / full trips are included — read `bookability`.
+   */
   trips: TripSearchItem[];
 }
 
@@ -104,6 +106,10 @@ export interface TripPassenger {
   bookingId: string;
   name: string;
   mobile: string;
+  /** The booking's free-text pickup point. */
+  pickupPoint: string;
+  /** The booking's free-text drop point. */
+  dropPoint: string;
   status: BookingStatus;
 }
 
@@ -112,10 +118,9 @@ export interface TripWithPassengers extends TripDetails {
   passengers: TripPassenger[];
 }
 
+/** Customers pick a bus trip by date; where they board and get off is typed on the booking. */
 export interface TripSearchQuery {
   date: ISODate;
-  from: string;
-  to: string;
 }
 
 export interface TripListQuery {

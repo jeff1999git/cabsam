@@ -9,6 +9,8 @@ import { useState } from "react";
 
 import { formatMobile, telHref } from "@/lib/format";
 
+import { StopsLabel } from "@/components/common/stops-label";
+
 /** Above this many passengers a filter box appears. */
 const FILTER_THRESHOLD = 8;
 
@@ -18,6 +20,8 @@ function matchesFilter(passenger: TripPassenger, filter: string): boolean {
   return (
     passenger.name.toLowerCase().includes(needle) ||
     passenger.bookingId.toLowerCase().includes(needle) ||
+    passenger.pickupPoint.toLowerCase().includes(needle) ||
+    passenger.dropPoint.toLowerCase().includes(needle) ||
     passenger.mobile.includes(needle.replace(/\s/g, ""))
   );
 }
@@ -26,7 +30,10 @@ interface PassengerListProps {
   passengers: readonly TripPassenger[];
 }
 
-/** Passenger rows with tap-to-call links; a name / booking ID / mobile filter on long lists. */
+/**
+ * Passenger rows (name, booking ID, pickup → drop) with tap-to-call links; long lists get a filter
+ * that matches name, booking ID, mobile, pickup or drop.
+ */
 export function PassengerList({ passengers }: PassengerListProps) {
   const [filter, setFilter] = useState("");
   const showFilter = passengers.length > FILTER_THRESHOLD;
@@ -51,8 +58,8 @@ export function PassengerList({ passengers }: PassengerListProps) {
         <SearchInput
           value={filter}
           onValueChange={setFilter}
-          aria-label="Filter passengers"
-          placeholder="Filter by name, booking ID or mobile"
+          aria-label="Filter passengers by name, booking ID, mobile, pickup or drop"
+          placeholder="Name, booking ID, mobile or stop"
           clearLabel="Clear filter"
         />
       ) : null}
@@ -69,9 +76,11 @@ export function PassengerList({ passengers }: PassengerListProps) {
       ) : (
         <ul className="divide-y">
           {visible.map((passenger) => (
+            // Phones: name + call on the first line, stops across the full width below.
+            // From `sm` the stops sit under the name and the call button spans both lines.
             <li
               key={passenger.bookingId}
-              className="flex min-h-14 items-center justify-between gap-3 py-2"
+              className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 py-2.5"
             >
               <div className="min-w-0">
                 <p className="truncate font-semibold">{passenger.name}</p>
@@ -80,11 +89,16 @@ export function PassengerList({ passengers }: PassengerListProps) {
               <a
                 href={telHref(passenger.mobile)}
                 aria-label={`Call ${passenger.name}`}
-                className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg bg-primary-soft px-3.5 text-sm font-semibold text-primary tabular-nums outline-none transition-colors hover:bg-primary-soft-strong focus-visible:ring-[3px] focus-visible:ring-ring/40"
+                className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg bg-primary-soft px-3.5 text-sm font-semibold text-primary tabular-nums outline-none transition-colors hover:bg-primary-soft-strong focus-visible:ring-[3px] focus-visible:ring-ring/40 sm:row-span-2"
               >
                 <Phone className="size-4" aria-hidden="true" />
                 {formatMobile(passenger.mobile)}
               </a>
+              <StopsLabel
+                pickupPoint={passenger.pickupPoint}
+                dropPoint={passenger.dropPoint}
+                className="col-span-2 sm:col-span-1"
+              />
             </li>
           ))}
         </ul>

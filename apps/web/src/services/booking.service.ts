@@ -11,7 +11,9 @@ import { mockBookingService } from "./mock/booking.mock";
 
 export interface BookingService {
   /**
-   * Customer. One booking = one seat for the named passenger.
+   * Customer. One booking = one seat for the named passenger, boarding at `pickupPoint` and getting
+   * off at `dropPoint` (free text, not checked against the route; a drop equal to the pickup is
+   * `fieldErrors.dropPoint`).
    * @throws VALIDATION · NOT_FOUND(trip) ·
    *   CONFLICT(TRIP_NOT_SCHEDULED | TRIP_ON_HOLIDAY | TRIP_DEPARTED | TRIP_FULL | DUPLICATE_BOOKING)
    */
@@ -28,7 +30,7 @@ export interface BookingService {
    * @throws NOT_FOUND · FORBIDDEN · CONFLICT(BOOKING_NOT_CANCELLABLE | CANCELLATION_CLOSED)
    */
   cancel(id: string, input?: CancelBookingInput): Promise<BookingDetails>;
-  /** Admin. Newest first; `q` matches booking id, passenger name or mobile digits. */
+  /** Admin. Newest first; `q` matches booking id, passenger name, mobile digits, pickup or drop point. */
   list(query?: BookingListQuery): Promise<Paginated<BookingDetails>>;
 }
 

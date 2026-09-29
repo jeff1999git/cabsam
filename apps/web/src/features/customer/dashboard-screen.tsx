@@ -1,6 +1,6 @@
 "use client";
 
-import type { MyBookingScope } from "@excelcabs/types";
+import type { ISODate, MyBookingScope } from "@excelcabs/types";
 import { Button } from "@excelcabs/ui/components/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@excelcabs/ui/components/tabs";
 import { EmptyState } from "@excelcabs/ui/composites/empty-state";
@@ -10,12 +10,12 @@ import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 
 import { QueryError } from "@/components/common/query-error";
-import { homeHref, resolveTripSearch, type TripSearchState } from "@/features/booking/search-params";
+import { homeHref } from "@/features/booking/search-params";
 import { TripSearchForm } from "@/features/booking/trip-search-form";
 import { useSession } from "@/hooks/use-session";
 import { today } from "@/lib/datetime";
+import type { StopPointsValues } from "@/lib/schemas/booking";
 import { useMyBookings } from "@/queries/bookings";
-import { useRouteNetwork } from "@/queries/routes";
 
 import { BookingCard, BookingCardSkeleton } from "./booking-card";
 
@@ -87,17 +87,15 @@ function BookingsTab({ tab }: { tab: BookingsTabConfig }) {
   );
 }
 
-/** `/customer`: greeting, quick "Book a Trip" search and the customer's bookings by scope. */
+/** `/customer`: greeting, "Book a Trip" (date + pickup + drop → home search) and bookings by scope. */
 export function CustomerDashboardScreen() {
   const router = useRouter();
   const { session } = useSession();
   const bookHeadingId = useId();
   const bookingsHeadingId = useId();
   const [minDate] = useState(today);
-  const [draft, setDraft] = useState<Partial<TripSearchState>>({});
-
-  const network = useRouteNetwork();
-  const search = resolveTripSearch(draft, network.data, minDate);
+  const [date, setDate] = useState<ISODate>(minDate);
+  const [stops, setStops] = useState<StopPointsValues>({ pickupPoint: "", dropPoint: "" });
   const upcoming = useMyBookings({ scope: "upcoming" });
 
   const firstName = session?.user.name.trim().split(/\s+/)[0] ?? "there";
@@ -114,20 +112,17 @@ export function CustomerDashboardScreen() {
         <h2 id={bookHeadingId} className="text-xl font-semibold tracking-tight">
           Book a Trip
         </h2>
-        {network.isError ? (
-          <QueryError error={network.error} onRetry={() => void network.refetch()} />
-        ) : (
-          <TripSearchForm
-            mode="navigate"
-            value={search}
-            network={network.data}
-            minDate={minDate}
-            onChange={setDraft}
-            onSubmit={() => {
-              if (search) router.push(homeHref(search));
-            }}
-          />
-        )}
+        <TripSearchForm
+          mode="navigate"
+          date={date}
+          minDate={minDate}
+          onDateChange={setDate}
+          stops={stops}
+          onStopsChange={setStops}
+          onSubmit={(values) =>
+            router.push(homeHref({ date, pickup: values.pickupPoint, drop: values.dropPoint }))
+          }
+        />
       </section>
 
       <section aria-labelledby={bookingsHeadingId} className="flex flex-col gap-4">

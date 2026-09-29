@@ -28,6 +28,7 @@ import { pluralize } from "@/lib/format";
 import { useBuses, useUpdateBus } from "@/queries/buses";
 
 import { BusFormDialog } from "./bus-form-dialog";
+import { nextBusName } from "./next-bus-name";
 
 const STATUS_OPTIONS = BUS_STATUSES.map((status) => ({
   value: status,
@@ -40,6 +41,8 @@ export function AdminBusesScreen() {
   const [status, setStatus] = useState<BusStatus | "">("");
   const q = useDebouncedValue(search.trim());
   const buses = useBuses({ q: q || undefined, status: status || undefined });
+  // The whole fleet (same cache entry as `buses` while no filter is set) numbers the next bus.
+  const fleet = useBuses();
   const editor = useEditor<BusWithUsage>();
   const updateBus = useUpdateBus();
   const toggle = useStatusToggle<BusWithUsage, UpdateBusInput>({
@@ -187,6 +190,7 @@ export function AdminBusesScreen() {
         open={editor.open}
         onOpenChange={editor.onOpenChange}
         bus={editor.item}
+        suggestedName={fleet.data ? nextBusName(fleet.data) : undefined}
       />
       {toggle.dialogs}
     </div>

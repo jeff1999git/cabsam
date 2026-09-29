@@ -129,6 +129,8 @@ export function toTripWithPassengers(
       bookingId: booking.id,
       name: booking.passengerName,
       mobile: booking.passengerMobile,
+      pickupPoint: booking.pickupPoint,
+      dropPoint: booking.dropPoint,
       status: booking.status,
     }))
     .toSorted((a, b) => a.name.localeCompare(b.name));

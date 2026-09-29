@@ -3,7 +3,6 @@ import type {
   CancelTripResult,
   CreateTripInput,
   MyTripsQuery,
-  RouteEndpoints,
   TripDetails,
   TripListQuery,
   TripSearchItem,
@@ -18,14 +17,10 @@ import { mockTripService } from "./mock/trip.mock";
 
 export interface TripService {
   /**
-   * Public. The distinct origin → destination pairs served by active buses (both directions of
-   * each bus's route), sorted by origin then destination — the From / To options.
-   */
-  listRoutes(): Promise<RouteEndpoints[]>;
-  /**
-   * Public. Trips on `date` from `from` to `to` (case-insensitive), departure order; cancelled
-   * trips are left out. On a holiday, `holiday` is set and `trips` is empty.
-   * @throws VALIDATION(PAST_DATE; from === to)
+   * Public. Every trip on `date` across all buses and both directions, by departure time then bus
+   * name; cancelled trips are left out, departed / full ones stay (read `bookability`). On a
+   * holiday, `holiday` is set and `trips` is empty.
+   * @throws VALIDATION(PAST_DATE)
    */
   search(query: TripSearchQuery): Promise<TripSearchResult>;
   /** Public (booking flow). Returned even when unbookable — read `bookability`. @throws NOT_FOUND */

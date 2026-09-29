@@ -112,6 +112,11 @@ function findDbViolations(db: Readonly<MockDb>): string[] {
     if (!BOOKING_ID_RE.test(booking.id) || !booking.id.startsWith(bookingIdPrefix(trip.date))) {
       violations.push(`booking ${booking.id}: id does not match trip date ${trip.date}`);
     }
+    if (!booking.pickupPoint.trim() || !booking.dropPoint.trim()) {
+      violations.push(`booking ${booking.id}: missing pickup or drop point`);
+    } else if (isSameStop(booking.pickupPoint, booking.dropPoint)) {
+      violations.push(`booking ${booking.id}: pickup and drop are the same (${booking.pickupPoint})`);
+    }
     const consistent =
       booking.status === "cancelled" ||
       (booking.status === "confirmed" && (trip.status === "scheduled" || trip.status === "in_progress")) ||

@@ -5,11 +5,9 @@ import {
   type Bus,
   type FieldErrors,
   type ISODate,
-  type RouteEndpoints,
   type ServiceErrorReason,
   type TimeHM,
   type Trip,
-  TRIP_DIRECTIONS,
   TRIP_EDITABLE_FIELDS,
   type TripSummary,
 } from "@excelcabs/types";
@@ -18,7 +16,6 @@ import { TURNAROUND_MINUTES } from "@/config/business";
 import { addMinutes, formatDayMonth, formatTime, type IstNow, nowIso, nowIst } from "@/lib/datetime";
 import { formatRoute, pluralize } from "@/lib/format";
 import type { MockDb } from "@/lib/mock/db";
-import { isSameStop } from "@/lib/schemas/common";
 import { tripSearchInputSchema } from "@/lib/schemas/search";
 import { cancelTripSchema, tripInputSchema, tripUpdateSchema } from "@/lib/schemas/trip";
 
@@ -53,8 +50,12 @@ function byDeparture(a: Trip, b: Trip): number {
   return a.date.localeCompare(b.date) || a.departureTime.localeCompare(b.departureTime);
 }
 
-function byStops(a: RouteEndpoints, b: RouteEndpoints): number {
-  return a.origin.localeCompare(b.origin) || a.destination.localeCompare(b.destination);
+/** Same-day order for customers: departure time, then bus name ("Bus 2" before "Bus 10"). */
+function byTimeThenBus(a: TripSummary, b: TripSummary): number {
+  return (
+    a.departureTime.localeCompare(b.departureTime) ||
+    a.bus.name.localeCompare(b.bus.name, "en", { numeric: true })
+  );
 }
 
 function findTrip(db: Readonly<MockDb>, id: string): Trip {
@@ -136,40 +137,20 @@ function assertNoScheduleConflict(db: Readonly<MockDb>, slot: TripSlot, excludeT
 }
 
 export const mockTripService: TripService = {
-  listRoutes() {
-    return mockRead((db) => {
-      const served = new Map<string, RouteEndpoints>();
-      for (const bus of db.buses) {
-        if (bus.status !== "active") continue;
-        for (const direction of TRIP_DIRECTIONS) {
-          const route = routeEndpoints(bus, direction);
-          const key = `${route.origin.toLowerCase()}→${route.destination.toLowerCase()}`;
-          if (!served.has(key)) served.set(key, route);
-        }
-      }
-      return [...served.values()].toSorted(byStops);
-    });
-  },
-
   search(query) {
     return mockRead((db) => {
-      const { date, from, to } = parseInput(tripSearchInputSchema, query);
+      const { date } = parseInput(tripSearchInputSchema, query);
       const now = nowIst();
       if (date < now.date) throw fieldError("date", "Date cannot be in the past", "PAST_DATE");
-      if (isSameStop(from, to)) throw validation({ to: "Choose a different destination" });
 
       const holiday = holidayOn(db, date) ?? null;
-      if (holiday) return { date, from, to, holiday, trips: [] };
+      if (holiday) return { date, holiday, trips: [] };
       const index = indexDb(db);
       const trips = db.trips
         .filter((trip) => trip.date === date && trip.status !== "cancelled")
-        .filter((trip) => {
-          const bus = index.buses.get(trip.busId);
-          return bus !== undefined && isSameRoute(routeEndpoints(bus, trip.direction), { origin: from, destination: to });
-        })
-        .toSorted(byDeparture)
-        .map((trip) => toTripSearchItem(index, trip, now));
-      return { date, from, to, holiday: null, trips };
+        .map((trip) => toTripSearchItem(index, trip, now))
+        .toSorted(byTimeThenBus);
+      return { date, holiday: null, trips };
     });
   },
 

@@ -5,8 +5,8 @@ import { busService } from "@/services/bus.service";
 
 import { type QueryDomain, queryKeys } from "./keys";
 
-/** A bus's route is what customers can book, so bus writes also refresh the route network. */
-const BUS_WRITE_INVALIDATES = ["buses", "routes", "trips", "bookings", "dashboard"] as const satisfies readonly QueryDomain[];
+/** Trips and bookings embed their bus (name, seats, route), so bus writes refresh them too. */
+const BUS_WRITE_INVALIDATES = ["buses", "trips", "bookings", "dashboard"] as const satisfies readonly QueryDomain[];
 
 /** Admin: buses with `upcomingTripCount`, `totalTripCount` (> 0 locks the route) and `maxBookedOnUpcomingTrip`. */
 export function useBuses(query?: BusListQuery) {
