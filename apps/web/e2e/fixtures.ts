@@ -11,6 +11,8 @@ export const TOMORROW = "2026-09-29";
 export const DAY_AFTER_TOMORROW = "2026-09-30";
 /** Seeded holiday (Gandhi Jayanti). */
 export const HOLIDAY = "2026-10-02";
+/** The next Sunday: no service (every Sunday is a holiday). */
+export const SUNDAY = "2026-10-04";
 
 /** The mock database persists under this localStorage prefix (one key per schema version). */
 const DB_KEY_PREFIX = "excelcabs:db:";

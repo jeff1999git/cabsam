@@ -14,7 +14,6 @@ import { BusFront, Plus } from "lucide-react";
 import { useState } from "react";
 
 import { QueryError } from "@/components/common/query-error";
-import { RouteLabel } from "@/components/common/route-label";
 import { BUS_STATUS_META, BusStatusBadge } from "@/components/status/bus-status-badge";
 import { CatalogEmptyState } from "@/features/admin/catalog-shared/catalog-empty-state";
 import { CatalogRowActions } from "@/features/admin/catalog-shared/catalog-row-actions";
@@ -23,7 +22,6 @@ import { tripsFilterHref } from "@/features/admin/catalog-shared/trips-href";
 import { UpcomingTripsCell } from "@/features/admin/catalog-shared/upcoming-trips-cell";
 import { useEditor } from "@/features/admin/catalog-shared/use-editor";
 import { useStatusToggle } from "@/features/admin/catalog-shared/use-status-toggle";
-import { formatDuration } from "@/lib/datetime";
 import { pluralize } from "@/lib/format";
 import { useBuses, useUpdateBus } from "@/queries/buses";
 
@@ -77,18 +75,12 @@ export function AdminBusesScreen() {
   }
 
   const columns: ResponsiveTableColumn<BusWithUsage>[] = [
+    { id: "name", header: "Bus Name", cell: (bus) => <span className="font-medium">{bus.name}</span> },
     {
-      id: "bus",
-      header: "Bus",
-      cell: (bus) => (
-        <span className="flex flex-col">
-          <span className="font-medium">{bus.name}</span>
-          <span className="font-mono text-xs text-muted-foreground">{bus.registrationNumber}</span>
-        </span>
-      ),
+      id: "registration",
+      header: "Registration Number",
+      cell: (bus) => <span className="font-mono text-sm">{bus.registrationNumber}</span>,
     },
-    { id: "route", header: "Route", cell: (bus) => <RouteLabel route={bus} bidirectional compact /> },
-    { id: "duration", header: "Duration", cell: (bus) => formatDuration(bus.durationMinutes) },
     { id: "capacity", header: "Capacity", cell: (bus) => pluralize(bus.capacity, "seat") },
     {
       id: "upcoming",
@@ -110,7 +102,7 @@ export function AdminBusesScreen() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Buses"
-        description="The fleet and the route each bus runs. Only active buses can be assigned to trips."
+        description="The fleet. Assign buses to trips on the Trips page — only active buses can be assigned."
         actions={
           <Button type="button" onClick={editor.create}>
             <Plus />
@@ -148,7 +140,7 @@ export function AdminBusesScreen() {
             <CatalogEmptyState
               icon={<BusFront />}
               noun="buses"
-              description="Add the buses in your fleet and the route each one runs, so they can be scheduled on trips."
+              description="Add the buses in your fleet, then assign them to trips on the Trips page."
               filtered={filtered}
               onClearFilters={clearFilters}
               onAdd={editor.create}
@@ -166,10 +158,7 @@ export function AdminBusesScreen() {
                     </span>
                   </p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    <RouteLabel route={bus} bidirectional compact />
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {formatDuration(bus.durationMinutes)} · {pluralize(bus.capacity, "seat")} ·{" "}
+                    {pluralize(bus.capacity, "seat")} ·{" "}
                     <UpcomingTripsCell
                       count={bus.upcomingTripCount}
                       href={tripsFilterHref("busId", bus.id)}

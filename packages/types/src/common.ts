@@ -7,6 +7,10 @@ export type TimeHM = string;
 /** UTC instant, as produced by `Date#toISOString()`. */
 export type ISODateTime = string;
 
+/** Day of the week as `Date#getUTCDay` numbers it: 0 = Sunday … 6 = Saturday. */
+export const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6] as const;
+export type Weekday = (typeof WEEKDAYS)[number];
+
 export type Unsubscribe = () => void;
 
 /** 1-based pagination request. */

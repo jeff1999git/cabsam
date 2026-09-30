@@ -23,7 +23,7 @@ interface DriverSeed {
 
 const DRIVER_SEEDS: readonly DriverSeed[] = [
   // The demo driver: 7:00 AM and 5:30 PM Shakthan Stand ⇄ SmartCity on Bus 2.
-  { id: DRIVER_IDS.biju, name: "Biju Thomas", email: DEMO_ACCOUNTS.driver.email, mobile: "9847123456", status: "active", joinedDaysAgo: 480 },
+  { id: DRIVER_IDS.biju, name: "Titto Excel", email: DEMO_ACCOUNTS.driver.email, mobile: "9847123456", status: "active", joinedDaysAgo: 480 },
   { id: DRIVER_IDS.suresh, name: "Suresh Kumar", email: "suresh.kumar@excelcabs.com", mobile: "9846234567", status: "active", joinedDaysAgo: 450 },
   { id: DRIVER_IDS.anil, name: "Anil Joseph", email: "anil.joseph@excelcabs.com", mobile: "9745345678", status: "active", joinedDaysAgo: 400 },
   { id: DRIVER_IDS.pradeep, name: "Pradeep Nair", email: "pradeep.nair@excelcabs.com", mobile: "9656456789", status: "active", joinedDaysAgo: 320 },

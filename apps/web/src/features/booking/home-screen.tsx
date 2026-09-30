@@ -1,6 +1,12 @@
 "use client";
 
-import type { BusRef, TripSearchItem, TripSearchResult } from "@excelcabs/types";
+import type {
+  BusRef,
+  ISODate,
+  ServiceClosure,
+  TripSearchItem,
+  TripSearchResult,
+} from "@excelcabs/types";
 import { Alert, AlertDescription, AlertTitle } from "@excelcabs/ui/components/alert";
 import { Button } from "@excelcabs/ui/components/button";
 import { EmptyState } from "@excelcabs/ui/composites/empty-state";
@@ -11,17 +17,17 @@ import { useId, useState } from "react";
 
 import { QueryError } from "@/components/common/query-error";
 import { useSession } from "@/hooks/use-session";
-import { addDays, formatDayMonth, formatWeekdayDate, today } from "@/lib/datetime";
+import { addDays, formatWeekdayDate, today } from "@/lib/datetime";
 import type { StopPointsValues } from "@/lib/schemas/booking";
-import { useTripSearch } from "@/queries/trips";
+import { useNextOperatingDay, useTripSearch } from "@/queries/trips";
 
 import { BookingStepper } from "./booking-stepper";
 import {
   bookingHref,
   type HomeSearchParams,
   homeHref,
+  parseSearchDate,
   readHomeSearchParams,
-  resolveSearchDate,
 } from "./search-params";
 import { TripResultRow, TripResultRowSkeleton } from "./trip-result-row";
 import { TripSearchForm } from "./trip-search-form";
@@ -96,6 +102,44 @@ function BusFilter({ buses, value, onChange }: BusFilterProps) {
   );
 }
 
+interface ClosureBannerProps {
+  closure: ServiceClosure;
+  date: ISODate;
+  onChangeDate: (date: ISODate) => void;
+}
+
+/** A Sunday or holiday, with a jump to the next day the shuttle runs. */
+function ClosureBanner({ closure, date, onChangeDate }: ClosureBannerProps) {
+  const nextOpen = useNextOperatingDay(date);
+  return (
+    <Alert variant="info">
+      <CalendarOff />
+      <AlertTitle>
+        {closure.reason === "sunday"
+          ? "No service on Sundays"
+          : `No service on ${formatWeekdayDate(closure.holiday.date)} — ${closure.holiday.reason}`}
+      </AlertTitle>
+      <AlertDescription>
+        <p>
+          {closure.reason === "sunday"
+            ? "The shuttle runs Monday to Saturday."
+            : "The shuttle does not run on holidays."}
+        </p>
+        <Button
+          type="button"
+          variant="soft"
+          size="sm"
+          className="mt-1"
+          loading={nextOpen.isPending}
+          onClick={() => onChangeDate(nextOpen.data ?? addDays(date, 1))}
+        >
+          Check next day
+        </Button>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
 interface TripResultsProps {
   result: TripSearchResult;
   selectedTripId: string | null;
@@ -103,7 +147,7 @@ interface TripResultsProps {
   stale: boolean;
   onSelectTrip: (tripId: string) => void;
   onContinue: (tripId: string) => void;
-  onCheckNextDay: () => void;
+  onChangeDate: (date: ISODate) => void;
 }
 
 function TripResults({
@@ -112,25 +156,12 @@ function TripResults({
   stale,
   onSelectTrip,
   onContinue,
-  onCheckNextDay,
+  onChangeDate,
 }: TripResultsProps) {
   const [busFilter, setBusFilter] = useState<string | null>(null);
 
-  if (result.holiday) {
-    return (
-      <Alert variant="info">
-        <CalendarOff />
-        <AlertTitle>
-          No service on {formatDayMonth(result.holiday.date)} — {result.holiday.reason}
-        </AlertTitle>
-        <AlertDescription>
-          <p>The shuttle does not run on holidays.</p>
-          <Button type="button" variant="soft" size="sm" className="mt-1" onClick={onCheckNextDay}>
-            Check next day
-          </Button>
-        </AlertDescription>
-      </Alert>
-    );
+  if (result.closure) {
+    return <ClosureBanner closure={result.closure} date={result.date} onChangeDate={onChangeDate} />;
   }
 
   if (result.trips.length === 0) {
@@ -140,7 +171,7 @@ function TripResults({
         title="No trips on this date"
         description="Try another date."
         action={
-          <Button type="button" variant="soft" onClick={onCheckNextDay}>
+          <Button type="button" variant="soft" onClick={() => onChangeDate(addDays(result.date, 1))}>
             Try next day
           </Button>
         }
@@ -180,7 +211,10 @@ export function HomeScreen() {
   const [minDate] = useState(today);
 
   const raw = readHomeSearchParams(searchParams);
-  const date = resolveSearchDate(raw.date, minDate);
+  const nextOpen = useNextOperatingDay();
+  // Without a usable URL date: the next day with service (today when it runs), or today if that
+  // lookup fails. `null` while it loads.
+  const date = parseSearchDate(raw.date) ?? nextOpen.data ?? (nextOpen.isError ? minDate : null);
   const [stops, setStops] = useStopDrafts(raw.pickup, raw.drop);
   const results = useTripSearch(date);
 
@@ -196,7 +230,7 @@ export function HomeScreen() {
   /** Rewrites the URL with the current search, the typed stops and `patch`. */
   function replaceSearch(patch: HomeSearchParams) {
     const next = homeHref({
-      date,
+      date: date ?? undefined,
       trip: raw.trip,
       pickup: stops.pickupPoint,
       drop: stops.dropPoint,
@@ -246,7 +280,7 @@ export function HomeScreen() {
         className="flex flex-col gap-4"
       >
         <h2 id={servicesHeadingId} className="text-xl font-semibold tracking-tight">
-          Available Services · {formatWeekdayDate(date)}
+          Available Services{date ? ` · ${formatWeekdayDate(date)}` : ""}
         </h2>
         {results.data ? (
           <TripResults
@@ -256,7 +290,7 @@ export function HomeScreen() {
             onSelectTrip={(tripId) => replaceSearch({ trip: tripId })}
             // No validation here: the booking page asks for missing stops.
             onContinue={(tripId) => goToBooking(tripId, stops.pickupPoint, stops.dropPoint)}
-            onCheckNextDay={() => replaceSearch({ date: addDays(date, 1), trip: undefined })}
+            onChangeDate={(next) => replaceSearch({ date: next, trip: undefined })}
           />
         ) : results.isError ? (
           <QueryError error={results.error} onRetry={() => void results.refetch()} />

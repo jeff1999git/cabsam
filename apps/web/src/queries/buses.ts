@@ -5,10 +5,10 @@ import { busService } from "@/services/bus.service";
 
 import { type QueryDomain, queryKeys } from "./keys";
 
-/** Trips and bookings embed their bus (name, seats, route), so bus writes refresh them too. */
+/** Trips and bookings embed their bus (name, registration, seats), so bus writes refresh them too. */
 const BUS_WRITE_INVALIDATES = ["buses", "trips", "bookings", "dashboard"] as const satisfies readonly QueryDomain[];
 
-/** Admin: buses with `upcomingTripCount`, `totalTripCount` (> 0 locks the route) and `maxBookedOnUpcomingTrip`. */
+/** Admin: buses with `upcomingTripCount` and `maxBookedOnUpcomingTrip` (the floor for capacity). */
 export function useBuses(query?: BusListQuery) {
   return useQuery({
     queryKey: queryKeys.buses.list(query),

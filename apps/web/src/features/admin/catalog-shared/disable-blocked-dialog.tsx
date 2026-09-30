@@ -19,7 +19,7 @@ import { pluralize } from "@/lib/format";
 interface DisableBlockedDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** What the admin tried to disable, e.g. "Bus 2" or "Biju Thomas". */
+  /** What the admin tried to disable, e.g. "Bus 2" or "Titto Excel". */
   label: string;
   upcomingTripCount: number;
   /** `/admin/trips` filtered to the item, where its trips can be reassigned or cancelled. */

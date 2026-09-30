@@ -21,7 +21,7 @@ export function buildAdmin(today: ISODate): Admin {
   return {
     id: ADMIN_USER_ID,
     role: "admin",
-    name: "Anitha Menon",
+    name: "Nimmy Titto",
     email: DEMO_ACCOUNTS.admin.email,
     mobile: "9446012345",
     status: "active",
@@ -78,14 +78,17 @@ export function buildSpamCustomer(today: ISODate, disabledAt: ISODateTime): Cust
   };
 }
 
-/** Regular riders who are always on today's 7:00 AM Shakthan Stand → SmartCity manifest. */
+/**
+ * Regular riders who are always on the anchor day's (the first operating day from today) 7:00 AM
+ * Shakthan Stand → SmartCity manifest.
+ */
 const FIXED_PASSENGERS = [
   { id: "usr_cus_surya", name: "Surya", mobile: "9947963408", pickupPoint: "Shakthan Stand", dropPoint: "SmartCity" },
   { id: "usr_cus_rahul", name: "Rahul", mobile: "9876543210", pickupPoint: "Chalakudy", dropPoint: "Kakkanad" },
   { id: "usr_cus_anu", name: "Anu", mobile: "9847000000", pickupPoint: "Angamaly", dropPoint: "SmartCity" },
 ] as const;
 
-/** A regular rider and where they board and get off on today's 7:00 AM trip. */
+/** A regular rider and where they board and get off on the anchor day's 7:00 AM trip. */
 export interface FixedPassenger extends Pick<Booking, "pickupPoint" | "dropPoint"> {
   customer: Customer;
 }

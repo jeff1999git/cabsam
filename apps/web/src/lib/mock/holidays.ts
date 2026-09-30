@@ -19,17 +19,18 @@ export function holidayId(date: ISODate): string {
 }
 
 /**
- * The occurrence of each fixed holiday within [today − 7, today + 365], sorted by date. Today is
- * never a holiday, so the demo always has a working day to show.
+ * The occurrence of each fixed holiday within [today − 7, today + 365], sorted by date. A holiday
+ * may fall on today (the demo's facts then move to the next operating day) or on a Sunday (closed
+ * either way).
  */
 export function generateHolidays(today: ISODate): Holiday[] {
   const earliest = addDays(today, -LOOKBACK_DAYS);
   const year = Number(today.slice(0, 4));
   const createdAt = istToInstant(addDays(today, -60), "12:00");
 
-  return FIXED_HOLIDAYS.flatMap(({ monthDay, reason }) => {
+  return FIXED_HOLIDAYS.map(({ monthDay, reason }): Holiday => {
     const thisYear = `${year}-${monthDay}`;
     const date = thisYear >= earliest ? thisYear : `${year + 1}-${monthDay}`;
-    return date === today ? [] : [{ id: holidayId(date), date, reason, createdAt }];
+    return { id: holidayId(date), date, reason, createdAt };
   }).toSorted((a, b) => a.date.localeCompare(b.date));
 }

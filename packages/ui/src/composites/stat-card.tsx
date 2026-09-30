@@ -57,8 +57,9 @@ function StatCard({
         ) : null}
       </div>
       <div className="space-y-1">
-        <p className="text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">{value}</p>
-        {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
+        {/* `value` and `hint` may be elements (e.g. a Skeleton while loading), so they sit in divs. */}
+        <div className="text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">{value}</div>
+        {hint ? <div className="text-xs text-muted-foreground">{hint}</div> : null}
       </div>
     </Card>
   );

@@ -3,12 +3,12 @@ import "client-only";
 import type { Holiday, HolidayImpact, ISODate } from "@excelcabs/types";
 import { z } from "zod";
 
-import { formatDateLong, formatDayMonth, nowIso, today } from "@/lib/datetime";
+import { dayOfWeek, formatDateLong, formatDayMonth, nowIso, today } from "@/lib/datetime";
 import { pluralize } from "@/lib/format";
 import { holidayId } from "@/lib/mock/holidays";
 import type { MockDb } from "@/lib/mock/db";
 import { isoDateField } from "@/lib/schemas/common";
-import { holidayInputSchema } from "@/lib/schemas/holiday";
+import { holidayInputSchema, SUNDAY_HOLIDAY_MESSAGE } from "@/lib/schemas/holiday";
 
 import { conflict, notFound, validation } from "../errors";
 import type { HolidayService } from "../holiday.service";
@@ -62,6 +62,9 @@ export const mockHolidayService: HolidayService = {
       const { date, reason, cancelScheduledTrips } = parseInput(holidayInputSchema, input);
       if (date < today()) {
         throw validation({ date: "Date cannot be in the past" }, "Date cannot be in the past", "PAST_DATE");
+      }
+      if (dayOfWeek(date) === 0) {
+        throw validation({ date: SUNDAY_HOLIDAY_MESSAGE }, SUNDAY_HOLIDAY_MESSAGE, "NON_OPERATING_DAY");
       }
       const impact = impactOf(draft, date);
       if (impact.existingHoliday) {

@@ -19,8 +19,8 @@ export const ROLE_HOME: Record<Role, string> = {
 
 export const ACCOUNTS = {
   customer: { email: "customer@example.com", name: "Arjun Nair", mobile: "9895012345" },
-  driver: { email: "driver@excelcabs.com", name: "Biju Thomas", mobile: "9847123456" },
-  admin: { email: "admin@excelcabs.com", name: "Anitha Menon", mobile: "9446012345" },
+  driver: { email: "driver@excelcabs.com", name: "Titto Excel", mobile: "9847123456" },
+  admin: { email: "admin@excelcabs.com", name: "Nimmy Titto", mobile: "9446012345" },
 } as const satisfies Record<Role, { email: string; name: string; mobile: string }>;
 
 /** Seeded customer account used by the admin "Users" demo (0 bookings, active). */

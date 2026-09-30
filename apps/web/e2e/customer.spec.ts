@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-import { HOLIDAY, TOMORROW, expect, test } from "./fixtures";
+import { HOLIDAY, SUNDAY, TOMORROW, expect, test } from "./fixtures";
 import { ACCOUNTS, signIn, submitSignIn } from "./helpers/auth";
 import { confirmAction, expectToast } from "./helpers/ui";
 
@@ -181,11 +181,22 @@ test("a signed-in customer sees My Upcoming Bookings on the home page", async ({
 test("a holiday date shows the no-service banner instead of trips", async ({ page }) => {
   await page.goto(`/?date=${HOLIDAY}`);
   const services = page.getByRole("region", { name: /available services/i });
-  await expect(services).toContainText("No service on 2 Oct — Gandhi Jayanti");
+  await expect(services).toContainText("No service on Fri, 2 Oct — Gandhi Jayanti");
   await expect(services.getByRole("button", { name: "Check next day" })).toBeVisible();
   await expect(services.getByRole("listitem")).toHaveCount(0);
   await expect(page.getByText("No bookable trips on this date")).toBeVisible();
   await expect(page.getByRole("button", { name: "Continue" })).toBeDisabled();
+});
+
+test("a Sunday shows the no-service banner, and Check next day moves to Monday", async ({ page }) => {
+  await page.goto(`/?date=${SUNDAY}`);
+  const services = page.getByRole("region", { name: /available services/i });
+  await expect(services).toContainText("No service on Sundays");
+  await expect(services.getByRole("listitem")).toHaveCount(0);
+  await services.getByRole("button", { name: "Check next day" }).click();
+  await expect(page).toHaveURL(/date=2026-10-05/);
+  await expect(page.getByRole("heading", { level: 2, name: "Available Services · Mon, 5 Oct" })).toBeVisible();
+  await expect(services.getByRole("listitem").first()).toBeVisible();
 });
 
 test("a full trip is marked Full and cannot be selected", async ({ page }) => {

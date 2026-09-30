@@ -1,13 +1,16 @@
 import type { ISODate, ISODateTime } from "./common";
 import type { TripSummary } from "./trip";
 
-/** A date on which the shuttle service does not operate. */
+/** A date on which the shuttle service does not operate (on top of every Sunday). */
 export interface Holiday {
   id: string;
   date: ISODate;
   reason: string;
   createdAt: ISODateTime;
 }
+
+/** Why there is no service on a date: every Sunday is closed, and so is every holiday. */
+export type ServiceClosure = { reason: "sunday" } | { reason: "holiday"; holiday: Holiday };
 
 export interface HolidayListQuery {
   from?: ISODate;

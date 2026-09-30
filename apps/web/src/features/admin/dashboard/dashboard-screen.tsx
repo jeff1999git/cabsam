@@ -22,7 +22,7 @@ import { BookingStatusBadge } from "@/components/status/booking-status-badge";
 import { TripStatusBadge } from "@/components/status/trip-status-badge";
 import { bookingsHref } from "@/features/admin/bookings/bookings-search-params";
 import { tripsHref } from "@/features/admin/trips/trips-search-params";
-import { formatDateLong, formatDayMonth, formatTime, today } from "@/lib/datetime";
+import { dayOfWeek, formatDateLong, formatDayMonth, formatTime, today } from "@/lib/datetime";
 import { formatOccupancy, pluralize } from "@/lib/format";
 import { useAdminDashboard } from "@/queries/dashboard";
 
@@ -136,6 +136,13 @@ function StatCards({ summary }: { summary: AdminDashboardSummary | undefined }) 
   );
 }
 
+/** Why the shuttle doesn't run on the summary's day ("Sunday", "Gandhi Jayanti"), or null when it does. */
+function closureReason(summary: AdminDashboardSummary): string | null {
+  if (dayOfWeek(summary.date) === 0) return "Sunday";
+  if (summary.nextHoliday?.date === summary.date) return summary.nextHoliday.reason;
+  return null;
+}
+
 /** `/admin`: today's figures, today's schedule, the latest bookings and the next holiday. */
 export function AdminDashboardScreen() {
   const router = useRouter();
@@ -143,6 +150,7 @@ export function AdminDashboardScreen() {
   const dashboard = useAdminDashboard();
   const summary = dashboard.data;
   const date = summary?.date ?? todayDate;
+  const closedToday = summary ? closureReason(summary) : null;
 
   return (
     <div className="flex flex-col gap-6 sm:gap-8">
@@ -203,16 +211,24 @@ export function AdminDashboardScreen() {
               loadingRows={4}
               caption="Trips scheduled for today"
               empty={
-                <EmptyState
-                  icon={<CalendarDays />}
-                  title="No trips today"
-                  description="Nothing is scheduled for today yet."
-                  action={
-                    <Button variant="soft" asChild>
-                      <Link href={tripsHref({ create: true })}>Create trip</Link>
-                    </Button>
-                  }
-                />
+                closedToday ? (
+                  <EmptyState
+                    icon={<CalendarOff />}
+                    title={`No service today (${closedToday})`}
+                    description="No trips run on Sundays and holidays."
+                  />
+                ) : (
+                  <EmptyState
+                    icon={<CalendarDays />}
+                    title="No trips today"
+                    description="Nothing is scheduled for today yet."
+                    action={
+                      <Button variant="soft" asChild>
+                        <Link href={tripsHref({ create: true })}>Create trip</Link>
+                      </Button>
+                    }
+                  />
+                )
               }
             />
           </Section>

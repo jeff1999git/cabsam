@@ -1,7 +1,7 @@
-import { TRIP_DIRECTIONS, type Trip } from "@excelcabs/types";
+import { ACTIVE_TRIP_STATUSES, OPERATING_WEEKDAYS, type Trip, type TripSeries } from "@excelcabs/types";
 
 import { TURNAROUND_MINUTES } from "@/config/business";
-import { toMinutes } from "@/lib/datetime";
+import { dayOfWeek, toMinutes } from "@/lib/datetime";
 import { isSameStop } from "@/lib/schemas/common";
 
 import { BOOKING_ID_RE, bookingIdPrefix } from "./bookings";
@@ -29,6 +29,21 @@ function groupBy<T>(items: readonly T[], key: (item: T) => string): Map<string, 
   return groups;
 }
 
+function isActive(trip: Trip): boolean {
+  return (ACTIVE_TRIP_STATUSES as readonly string[]).includes(trip.status);
+}
+
+/** Non-empty, sorted, without duplicates and Mon–Sat only. */
+function hasValidWeekdays({ weekdays }: TripSeries): boolean {
+  const operating: readonly number[] = OPERATING_WEEKDAYS;
+  const normalized = [...new Set(weekdays)].toSorted((a, b) => a - b);
+  return (
+    weekdays.length > 0 &&
+    normalized.join() === weekdays.join() &&
+    weekdays.every((day) => operating.includes(day))
+  );
+}
+
 function overlaps(a: Trip, b: Trip): boolean {
   const start = (trip: Trip) => toMinutes(trip.departureTime);
   const end = (trip: Trip) => start(trip) + trip.durationMinutes + TURNAROUND_MINUTES;
@@ -41,10 +56,18 @@ function findDbViolations(db: Readonly<MockDb>): string[] {
   const users = new Map(db.users.map((user) => [user.id, user]));
   const buses = new Map(db.buses.map((bus) => [bus.id, bus]));
   const trips = new Map(db.trips.map((trip) => [trip.id, trip]));
+  const series = new Map(db.series.map((item) => [item.id, item]));
   const holidayDates = new Set(db.holidays.map((holiday) => holiday.date));
   const credentialUsers = new Set(db.credentials.map((credential) => credential.userId));
 
-  const collections = { users: db.users, buses: db.buses, trips: db.trips, bookings: db.bookings, holidays: db.holidays };
+  const collections = {
+    users: db.users,
+    buses: db.buses,
+    series: db.series,
+    trips: db.trips,
+    bookings: db.bookings,
+    holidays: db.holidays,
+  };
   for (const [name, items] of Object.entries(collections)) {
     for (const id of duplicates(items.map((item) => item.id))) violations.push(`${name}: duplicate id ${id}`);
   }
@@ -64,25 +87,43 @@ function findDbViolations(db: Readonly<MockDb>): string[] {
     if (!credentialUsers.has(user.id)) violations.push(`users: ${user.id} has no credential`);
   }
 
-  for (const bus of db.buses) {
-    if (isSameStop(bus.origin, bus.destination)) violations.push(`bus ${bus.id}: origin equals destination`);
-    if (bus.durationMinutes <= 0) violations.push(`bus ${bus.id}: duration is not positive`);
+  for (const item of db.series) {
+    if (!buses.has(item.busId)) violations.push(`series ${item.id}: unknown bus ${item.busId}`);
+    if (users.get(item.driverId)?.role !== "driver") {
+      violations.push(`series ${item.id}: ${item.driverId} is not a driver`);
+    }
+    if (isSameStop(item.origin, item.destination)) violations.push(`series ${item.id}: origin equals destination`);
+    if (item.durationMinutes <= 0) violations.push(`series ${item.id}: duration is not positive`);
+    if (!hasValidWeekdays(item)) violations.push(`series ${item.id}: weekdays are not a sorted Mon–Sat set`);
+    if (item.endDate < item.startDate) violations.push(`series ${item.id}: ends before it starts`);
   }
 
   for (const trip of db.trips) {
     const bus = buses.get(trip.busId);
     const driver = users.get(trip.driverId);
     if (!bus) violations.push(`trip ${trip.id}: unknown bus ${trip.busId}`);
-    if (!TRIP_DIRECTIONS.includes(trip.direction)) violations.push(`trip ${trip.id}: unknown direction ${trip.direction}`);
     if (driver?.role !== "driver") violations.push(`trip ${trip.id}: ${trip.driverId} is not a driver`);
+    if (isSameStop(trip.origin, trip.destination)) violations.push(`trip ${trip.id}: origin equals destination`);
     if (trip.durationMinutes <= 0) violations.push(`trip ${trip.id}: duration is not positive`);
     if (toMinutes(trip.departureTime) + trip.durationMinutes > MINUTES_PER_DAY) {
       violations.push(`trip ${trip.id}: ends after midnight`);
     }
-    const isUpcoming = (trip.status === "scheduled" || trip.status === "in_progress") && trip.date >= db.seededOn;
-    if (isUpcoming && holidayDates.has(trip.date)) violations.push(`trip ${trip.id}: runs on a holiday`);
-    if (isUpcoming && (bus?.status !== "active" || driver?.status !== "active")) {
+    if (dayOfWeek(trip.date) === 0) violations.push(`trip ${trip.id}: runs on a Sunday`);
+    // Adding a holiday cancels its scheduled trips; ones already completed that day stay.
+    if (isActive(trip) && holidayDates.has(trip.date)) violations.push(`trip ${trip.id}: runs on a holiday`);
+    if (isActive(trip) && trip.date >= db.seededOn && (bus?.status !== "active" || driver?.status !== "active")) {
       violations.push(`trip ${trip.id}: uses an inactive bus or driver`);
+    }
+    if (trip.seriesId !== null) {
+      const owner = series.get(trip.seriesId);
+      if (!owner) violations.push(`trip ${trip.id}: unknown series ${trip.seriesId}`);
+      else if (
+        trip.date < owner.startDate ||
+        trip.date > owner.endDate ||
+        !owner.weekdays.includes(dayOfWeek(trip.date))
+      ) {
+        violations.push(`trip ${trip.id}: ${trip.date} is outside series ${owner.id}`);
+      }
     }
   }
 
