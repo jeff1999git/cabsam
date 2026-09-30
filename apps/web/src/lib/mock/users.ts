@@ -21,7 +21,7 @@ export function buildAdmin(today: ISODate): Admin {
   return {
     id: ADMIN_USER_ID,
     role: "admin",
-    name: "Anitha Menon",
+    name: "Nimmy Titto",
     email: DEMO_ACCOUNTS.admin.email,
     mobile: "9446012345",
     status: "active",
